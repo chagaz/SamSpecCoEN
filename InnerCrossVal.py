@@ -12,10 +12,13 @@ import os
 import sys
 # import timeit
 
+from sklearn import linear_model as sklm 
+
 # sys.path.append('ACES')
 # from datatypes.ExpressionDataset import HDF5GroupToExpressionDataset, MakeRandomFoldMap
 
 # import utils
+import InnerCrossVal
 
 # orange_color = '#d66000'
 # blue_color = '#005599'
@@ -44,7 +47,7 @@ class InnerCrossVal(object):
 
     Reference
     ---------
-    Staiger, C., Cadot, S., Györffy, B., Wessels, L.F.A., and Klau, G.W. (2013).
+    Staiger, C., Cadot, S., Gyoerffy, B., Wessels, L.F.A., and Klau, G.W. (2013).
     Current composite-feature classification methods do not outperform simple single-genes
     classifiers in breast cancer prognosis. Front Genet 4.  
     """
@@ -58,6 +61,10 @@ class InnerCrossVal(object):
             Type of network to work with
             Correspond to a folder in dataFoldRoot
             Possible value: 'lioness', 'linreg'
+        nrFolds: int
+            Number of (inner) cross-validation folds.
+        maxNrFeats: int
+            Maximum number of features to return.
         """
         try:
             assert networkType in ['lioness', 'linreg']
@@ -66,8 +73,8 @@ class InnerCrossVal(object):
             sys.stderr.write("Aborting.\n")
             sys.exit(-1)
     
-        self.Xtr = np.loadtxt('%s/%s/edge_weights.gz' % (dataFoldRoot, networkType))
-        self.Xte = np.loadtxt('%s/%s/edge_weights_te.gz' % (dataFoldRoot, networkType))
+        self.Xtr = np.loadtxt('%s/%s/edge_weights.gz' % (dataFoldRoot, networkType)).transpose()
+        self.Xte = np.loadtxt('%s/%s/edge_weights_te.gz' % (dataFoldRoot, networkType)).transpose()
         
         self.Ytr = np.loadtxt('%s/train.labels' % dataFoldRoot, dtype='int')
         self.Yte = np.loadtxt('%s/test.labels' % dataFoldRoot, dtype='int')
@@ -76,51 +83,90 @@ class InnerCrossVal(object):
         self.maxNrFeats = maxNrFeats
         
 
-    def runInnerLasso(self):
-        """ Run the inner loop, using the Lasso algorithm.
-        
-        Returns
-        -------
-        predLabels: (numTestSamples, ) array
-            Predicted labels for test samples, in the same order as self.Ytr.
-        features: list
-            List of indices of the selected features.
-        """
-        # Get the optimal value of the lambda parameter by inner cross-validation
-        bestLambda = self.cvInnerLasso()
-
-        # Return the predictions and selected features
-        return self.trainPredInnerLasso(bestLambda)     
-
-        
-    def cvInnerLasso(self, lambdaRange=[10.**k for k in range(-3, 3)]):
-        """ Compute the inner cross-validation loop to determine the best lambda parameter for Lasso.
+    def runInnerL1LogReg(self, regParams=[10.**k for k in range(-3, 3)]):
+        """ Run the inner loop, using an l1-regularized logistic regression.
         
         Parameters
         ----------
-        lambdaRange: list
+        regParams: list
             Range of lambda values to try out.
             Default: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
-
+        
         Returns
         -------
-        bestLambda: float
-            Optimal value of the lambda parameter.
+        predValues: (numTestSamples, ) array
+            Probability estimates for test samples, in the same order as self.Ytr.
+        features: list
+            List of indices of the selected features.
         """
+        # Get the optimal value of the regularization parameter by inner cross-validation
+        bestRegParam = self.cvInnerL1LogReg(regParams)
+
+        # Return the predictions and selected features
+        return self.trainPredInnerL1LogReg(bestRegParam)     
 
         
-    def trainPredInnerLasso(self, bestLambda):
-        """ Train Lasso (with optimal parameter) on the train set, predict on the test set.
+    def cvInnerL1LogReg(self, regParams=[10.**k for k in range(-3, 3)]):
+        """ Compute the inner cross-validation loop to determine the best regularization parameter
+        for an l1-regularized logistic regression.
         
         Parameters
         ----------
-        bestLambda: float
-            Optimal value of the lambda parameter.
+        regParams: list
+            Range of lambda values to try out.
+            Default: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+        
+        Returns
+        -------
+        bestRegParam: float
+            Optimal value of the regularization parameter.
+        """
+        # Initialize logistic regression cross-validation classifier
+        cvClassif = sklm.LogisticRegressionCV(Cs=regParams, penalty='l1', solver='liblinear')
+
+        # Fit to training data
+        cvClassif.fit(self.Xtr, self.Ytr)
+
+        # Get optimal value of the regularization parameter.
+        # If there are multiple equivalent values, return the first one.
+        # Note: Small C = more regularization.
+        bestRegParam = cvClassif.C_[0]
+        return bestRegParam
+
+        
+    def trainPredInnerL1LogReg(self, bestRegParam):
+        """ Train an l1-regularized logistic regression (with optimal parameter)
+        on the train set, predict on the test set.
+        
+        Parameters
+        ----------
+        bestRegParam: float
+            Optimal value of the regularization parameter.
 
         Returns
         -------
-        predLabels: (numTestSamples, ) array
-            Predicted labels for test samples, in the same order as trueLabels.
+        predValues: (numTestSamples, ) array
+            Probability estimates for test samples, in the same order as trueLabels.
         features: list
             List of indices of the selected features.
-        """        
+        """
+        # Initialize logistic regression classifier
+        classif = sklm.LogisticRegression(C=bestRegParam, penalty='l1', solver='liblinear')
+        
+        # Train on the training set
+        classif.fit(self.Xtr, self.Ytr)
+
+        # Predict on the test set
+        predValues = classif.predict_proba(self.Xte)
+
+        # Only get the probability estimates for the positive class
+        predValues = predValues[:, classif.classes_.tolist().index(1)]
+
+        # Get selected features
+        # If there are less than self.maxNrFeats, these are the non-zero coefficients
+        features = np.where(classif.coef_[0])[0]
+        if len(features) > self.maxNrFeats:
+            # Prune the coefficients with lowest values
+            features = np.argsort(classif.coef_[0])[-self.maxNrFeats:]
+
+        return predValues, features
