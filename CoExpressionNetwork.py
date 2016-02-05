@@ -405,7 +405,7 @@ class CoExpressionNetwork(object):
 
         if isinstance(self.teIndices, np.ndarray):
             # Save weight edges to file
-            np.savetxt(weightsTeF, weights, fmt='%.5f')
+            np.savetxt(weightsTeF, weightsTe, fmt='%.5f')
             sys.stdout.write("Regline edge weights (test data) saved to %s\n" % weightsTeF)
 
             
