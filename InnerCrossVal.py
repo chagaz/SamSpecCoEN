@@ -5,23 +5,12 @@
 
 import argparse
 import h5py
-# import matplotlib.pyplot as plt
-# import memory_profiler # call program with flag -m memory_profiler
 import numpy as np
 import os
 import sys
-# import timeit
 
 from sklearn import linear_model as sklm 
 
-# sys.path.append('ACES')
-# from datatypes.ExpressionDataset import HDF5GroupToExpressionDataset, MakeRandomFoldMap
-
-# import utils
-import InnerCrossVal
-
-# orange_color = '#d66000'
-# blue_color = '#005599'
 
 class InnerCrossVal(object):
     """ Manage the inner cross-validation loop for learning on sample-specific co-expression networks.
@@ -60,16 +49,16 @@ class InnerCrossVal(object):
         networkType: string
             Type of network to work with
             Correspond to a folder in dataFoldRoot
-            Possible value: 'lioness', 'linreg'
+            Possible value: 'lioness', 'regline'
         nrFolds: int
             Number of (inner) cross-validation folds.
         maxNrFeats: int
             Maximum number of features to return.
         """
         try:
-            assert networkType in ['lioness', 'linreg']
+            assert networkType in ['lioness', 'regline']
         except AssertionError:
-            sys.stderr.write("networkType should be one of 'lioness', 'linerg'.\n")
+            sys.stderr.write("networkType should be one of 'lioness', 'regline'.\n")
             sys.stderr.write("Aborting.\n")
             sys.exit(-1)
     
@@ -122,7 +111,8 @@ class InnerCrossVal(object):
             Optimal value of the regularization parameter.
         """
         # Initialize logistic regression cross-validation classifier
-        cvClassif = sklm.LogisticRegressionCV(Cs=regParams, penalty='l1', solver='liblinear')
+        cvClassif = sklm.LogisticRegressionCV(Cs=regParams, penalty='l1', solver='liblinear',
+                                              class_weight='balanced', scoring='roc_auc')
 
         # Fit to training data
         cvClassif.fit(self.Xtr, self.Ytr)
@@ -151,7 +141,8 @@ class InnerCrossVal(object):
             List of indices of the selected features.
         """
         # Initialize logistic regression classifier
-        classif = sklm.LogisticRegression(C=bestRegParam, penalty='l1', solver='liblinear')
+        classif = sklm.LogisticRegression(C=bestRegParam, penalty='l1', solver='liblinear',
+                                          class_weight='balanced')
         
         # Train on the training set
         classif.fit(self.Xtr, self.Ytr)

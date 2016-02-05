@@ -6,22 +6,17 @@
 import argparse
 import h5py
 import matplotlib.pyplot as plt
-# import memory_profiler # call program with flag -m memory_profiler
 import numpy as np
 import os
 import scipy.stats as st
 import sys
-# import timeit
 
 from sklearn import metrics as skm
-
-# sys.path.append('ACES')
-# from datatypes.ExpressionDataset import HDF5GroupToExpressionDataset, MakeRandomFoldMap
+orange_color = '#d66000'
+blue_color = '#005599'
 
 import InnerCrossVal
 
-# orange_color = '#d66000'
-# blue_color = '#005599'
 
 class OuterCrossVal(object):
     """ Manage the outer cross-validation loop for learning on sample-specific co-expression networks.
@@ -65,7 +60,7 @@ class OuterCrossVal(object):
         networkType: string
             Type of network to work with
             Correspond to a folder in dataFoldRoot
-            Possible value: 'lioness', 'linreg'
+            Possible value: 'lioness', 'regline'
         nrInnerFolds: int
             Number of folds for the inner cross-validation loop.
         maxNrFeats: int
@@ -221,9 +216,9 @@ def main():
     args = parser.parse_args()
 
     try:
-        assert args.network_type in ['lioness', 'linreg']
+        assert args.network_type in ['lioness', 'regline']
     except AssertionError:
-        sys.stderr.write("network_type should be one of 'lioness', 'linreg'.\n")
+        sys.stderr.write("network_type should be one of 'lioness', 'regline'.\n")
         sys.stderr.write("Aborting.\n")
         sys.exit(-1)
 
