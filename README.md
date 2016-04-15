@@ -59,14 +59,14 @@ To create the corresponding data folds and networks:
 ```
     for repeat in {0..9}
     do
-	python setUpSubTypeStratifiedCV_writeIndices.py data/SamSpecCoEN ${repeat}
+        python setUpSubTypeStratifiedCV_writeIndices.py data/SamSpecCoEN ${repeat}
     done
 
     for repeat in {0..9}
     do
-	for fold in {0..9}
-	do
-		python setUpSubTypeStratifiedCV_computeNetworks.py data/SamSpecCoEN ${fold} ${repeat}
+        for fold in {0..9}
+        do
+	    python setUpSubTypeStratifiedCV_computeNetworks.py data/SamSpecCoEN ${fold} ${repeat}
 	done
     done
 ```
