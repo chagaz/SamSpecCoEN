@@ -9,26 +9,21 @@ import numpy as np
 import os
 import sys
 
-#from sklearn import cross_validation as skcv 
-
 import CoExpressionNetwork
-
-numFolds = 10
-
 
 def main():
     """ Create sample-specific co-expression networks for one fold and one repeat
-    of a subtype-stratified CV on the RFS data.
+    of a cross-validation for which fold indices have already been computed.
 
     The data will be stored under
-        <data_dir>/outputs/U133A_combat_RFS/subtype_stratified/repeat<repeat idx>
+        <data_dir>/repeat<repeat idx>
     with the following structure:
         edges.gz: 
             Gzipped file containing the list of edges of the co-expression networks.
             Each line is an undirected edge, formatted as:
                 <index of gene 1> <index of gene 2>
             By convention, the index of gene 1 is smaller than that of gene 2.
-        For k=1..numFolds:
+        For k=0..(numFolds-1):
             <k>/lioness/edge_weights.gz:
                 gzipped file containing the (self.numSamples, numEdges) array
                 describing the edge weights of the LIONESS co-expression networks
@@ -48,16 +43,18 @@ def main():
 
     Parameters
     ----------
+    aces_dir: path
+        Path to the ACES folder.
     data_dir: path
-        Path to the data folder.
-        Both ACES and the outputs directory must be under <data_dir>.
+        Path to the folder containing fold indices (under <data_dir>/repeat<repeat_idx>/fold<fold_idx>).
     fold: int
         Fold index.
     repeat: int
         Repeat index.
 
-    Example:
-        $ python setUpSubTypeStratifiedCV_computeNetworks.py $SHAREDAT/SamSpecCoEN 0 0
+    Example
+    -------
+        $ python setUpSubTypeStratifiedCV_computeNetworks.py ACES outputs/U133A_combat_RFS/subtype_stratified 0 0
     
     Reference
     ---------
@@ -68,16 +65,17 @@ def main():
     parser = argparse.ArgumentParser(description="Build sample-specific co-expression networks" + \
                                      "for a 10-fold sub-type stratified CV on the RFS data",
                                      add_help=True)
-    parser.add_argument("data_dir", help="Path to the data")
+    parser.add_argument("aces_dir", help="Path to ACES data")
+    parser.add_argument("data_dir", help="Path to the fold indices")
     parser.add_argument("fold", help="Index of the fold", type=int)
     parser.add_argument("repeat", help="Index of the repeat", type=int)
     args = parser.parse_args()
 
-    outDir = '%s/outputs/U133A_combat_RFS/subtype_stratified/repeat%d' % (args.data_dir, args.repeat)
+    outDir = '%s/repeat%d' % (args.data_dir, args.repeat)
 
     # Get expression data, sample labels.
     # Do not normalize the data while loading it (so as not to use test data for normalization).
-    f = h5py.File("%s/ACES/experiments/data/U133A_combat.h5" % args.data_dir)
+    f = h5py.File("%s/experiments/data/U133A_combat.h5" % args.aces_dir)
     expressionData = np.array(f['U133A_combat_RFS']['ExpressionData'])
     sampleLabels = np.array(f['U133A_combat_RFS']['PatientClassLabels'])
     f.close()

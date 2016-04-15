@@ -17,7 +17,7 @@ def main():
     """ Create train/test indices for one repeat of a subtype-stratified CV
     on the RFS data.
 
-    The data will be stored under
+    The indices will be stored under
         <data_dir>/outputs/U133A_combat_RFS/subtype_stratified/repeat<repeat idx>
     with the following structure:
         For k=1..numFolds:

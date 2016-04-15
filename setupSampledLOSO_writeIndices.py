@@ -1,7 +1,7 @@
 # @Author 
 # Chloe-Agathe Azencott
 # chloe-agathe.azencott@mines-paristech.fr
-# February 2016
+# April 2016
 
 import argparse
 import h5py
@@ -9,25 +9,15 @@ import numpy as np
 import os
 import sys
 
-import CoExpressionNetwork
-
 
 def main():
-    """ Build sample-specific co-expression networks for one repeat of a
-    10-fold "sampled leave-one-study-out" experiment on the RFS data.
+    """ Create train/test indices for one repeat of a 10-fold sampled leave-one-study-out
+    experiment on the RFS data.
 
-    The data will be stored under
-        outputs/U133A_combat_RFS/sampled_loso/repeat<repeat idx>
+    The indices will be stored under
+        <data_dir>/outputs/U133A_combat_RFS/sampled_loso/repeat<repeat idx>
     with the following structure:
-        edges.gz: 
-            Gzipped file containing the list of edges of the co-expression networks.
-            Each line is an undirected edge, formatted as:
-                <index of gene 1> <index of gene 2>
-            By convention, the index of gene 1 is smaller than that of gene 2.
         For k=1..numFolds:
-            <k>/global_connectivity.png
-                Regression plot of log10(p(connectivities)) against log10(connectivities)
-                for the global network.
             <k>/train.indices
                 List of indices of the training set (one per line).
             <k>/train.labels
@@ -36,24 +26,17 @@ def main():
                 List of indices of the test set (one per line).
             <k>/test.labels
                 List of (0/1) labels of the test set (one per line).
-            <k>/lioness/edge_weights.gz:
-                gzipped file containing the (self.numSamples, numEdges) array
-                describing the edge weights of the LIONESS co-expression networks
-                for the training samples.
-            <k>/lioness/edge_weights_te.gz:
-                gzipped file containing the (self.numSamples, numEdges) array
-                describing the edge weights of the LIONESS co-expression networks
-                for the test samples.
-            <k>/regline/edge_weights.gz:
-                gzipped file containing the (self.numSamples, numEdges) array
-                describing the edge weights of the Regline co-expression networks
-                for the training samples.
-            <k>/regline/edge_weights_te.gz:
-                gzipped file containing the (self.numSamples, numEdges) array
-                describing the edge weights of the Regline co-expression networks
-                for the test samples.
-    Example:
-        $ python setUpSampledLOSO.py 0
+    Parameters
+    ----------
+    data_dir: path
+        Path to the data folder.
+        ACES, GSE_RFS, and the outputs directory must be under <data_dir>.
+    repeat: int
+        Repeat index.
+
+    Example
+    -------
+        $ python setUpSampledLOSO_writeIndices.py $SHAREDAT/SamSpecCoEN 0
 
     Reference
     ---------
@@ -64,34 +47,36 @@ def main():
     parser = argparse.ArgumentParser(description="Build sample-specific co-expression networks" + \
                                      "for a sampled LOSO on the RFS data",
                                      add_help=True)
+    parser.add_argument("data_dir", help="Path to the data")
     parser.add_argument("repeat", help="Index of the repeat", type=int)
     args = parser.parse_args()
 
-    outDir = 'outputs/U133A_combat_RFS/sampled_loso/repeat%d' % args.repeat
+    outDir = '%s/outputs/U133A_combat_RFS/sampled_loso/repeat%d' % (args.data_dir, args.repeat)
     
     # Create outDir if it does not exist
     if not os.path.isdir(outDir):
         sys.stdout.write("Creating %s\n" % outDir)
         try: 
-            os.makedirs(args.outDir)
+            os.makedirs(outDir)
         except OSError:
-            if not os.path.isdir(args.outDir):
+            if not os.path.isdir(outDir):
                 raise
 
     # Get expression data, sample labels.
     # Do not normalize the data while loading it (so as not to use test data for normalization).
-    f = h5py.File("ACES/experiments/data/U133A_combat.h5")
+    f = h5py.File("%s/ACES/experiments/data/U133A_combat.h5" % args.data_dir)
     expressionData = np.array(f['U133A_combat_RFS']['ExpressionData'])
     sampleLabels = np.array(f['U133A_combat_RFS']['PatientClassLabels'])
     sampleAccess = np.array(f['U133A_combat_RFS']['PatientLabels']).tolist()
     f.close()
     
     # Map the indices to the studies
-    # TODO using GSE_RFS/GSE<studyId>.txt (list of accessions in one study)
     studyDict = {} # studyId:[sampleIdx]
 
-    for studyFile in enumerate(os.listdir('GSE_RFS/')):
-        studyPath = 'GSE_RFS/%s' % studyFile
+    gse_rfs_dir = '%s/GSE_RFS/' % args.data_dir
+    for studyFile in os.listdir(gse_rfs_dir):
+        studyPath = '%s/%s' % (gse_rfs_dir, studyFile)
+        print studyPath
         with open(studyPath, 'r') as f:
             gsmNames = set([x.split()[0] for x in f.readlines()])
             f.close()
@@ -100,17 +85,22 @@ def main():
     
     studyList = studyDict.keys()
     numStudies = len(studyList)
+    print "Found %d studies" % numStudies
 
-    random.seed = args.repeat
+    np.random.seed(seed=args.repeat)
     for foldNr in range(numStudies):
         # Training data:
         # randomly sample 50% of each study that is not foldNr
         trIndices = []
-        for studyId in [x in studyList if x!=foldNr]:
-            studyIndices = studyDict[studyId]
-            random.shuffle(studyIndices)
-            n = len(studyIndices)
-            trIndices.extend(studyIndices[:(n/2)])
+        for studyId in [x for x in studyList if x!=foldNr]:
+            studyIndices = np.random.choice(studyDict[studyId],
+                                            size=len(studyDict[studyId])/2,
+                                            replace=False)
+            trIndices.extend(studyIndices)
+            # studyIndices = studyDict[studyId]
+            # random.shuffle(studyIndices)
+            # n = len(studyIndices)
+            # trIndices.extend(studyIndices[:(n/2)])
         
         # Test data:
         # the data from foldNr
@@ -142,13 +132,9 @@ def main():
 
         # Save test labels to file
         teLabelsF = '%s/test.labels' % foldDir
-        np.savetxt(teLabelsF, np.array(sampeLabels[teIndices], dtype='int'),
+        np.savetxt(teLabelsF, np.array(sampleLabels[teIndices], dtype='int'),
                    fmt='%d')
         sys.stdout.write("Wrote test labels for fold %d to %s\n" % (foldNr, teLabelsF))
-
-        # Create the networks
-        CoExpressionNetwork.run_whole_data(expressionData, sampleLabels, foldDir,
-                                           trIndices=trIndices, teIndices=teIndices)
 
 
 
