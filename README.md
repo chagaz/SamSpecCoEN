@@ -59,19 +59,42 @@ To create the corresponding data folds and networks:
 ```
     for repeat in {0..9}
     do
-        python setUpSubTypeStratifiedCV_writeIndices.py data/SamSpecCoEN ${repeat}
+        python setupSubtypeStratifiedCV_writeIndices.py data/SamSpecCoEN ${repeat}
     done
 
     for repeat in {0..9}
     do
         for fold in {0..9}
         do
-	    python setUpSubTypeStratifiedCV_computeNetworks.py data/SamSpecCoEN ${fold} ${repeat}
+	    python setupCV_computeNetworks.py data/SamSpecCoEN/ACES data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified ${fold} ${repeat}
 	done
     done
 ```
 This process can easily be parallelized.
 
+**Warning** Note that for one repeat and fold, the networks take about 450 Mo of space, meaning that for 10 folds, 10 repeats, you need 43 Go of space to store the data. 
+
+### Networks in a sampled leave-one-study-out cross-validation setting
+We use a sampled leave-one-study-out cross-validation setting similar to that described in [Allahyar & de Ridder, 2015].
+
+To create the corresponding data folds and networks:
+```
+    for repeat in {0..9}
+    do
+        python setupSampledLOSO_writeIndices.py data/SamSpecCoEN ${repeat}
+    done
+
+    for repeat in {0..9}
+    do
+        for fold in {0..9}
+        do
+	    python setupCV_computeNetworks.py data/SamSpecCoEN/ACES data/SamSpecCoEN/outputs/U133A_combat_RFS/sampled_loso  ${fold} ${repeat}
+	done
+    done
+```
+This process can easily be parallelized.
+
+**Warning** Note that for one repeat and fold, the networks take about 450 Mo of space, meaning that for 10 folds, 10 repeats, you need 43 Go of space to store the data. 
 
 Cross-validation experiments
 ----------------------------
