@@ -67,7 +67,7 @@ To create the corresponding data folds and networks:
         for fold in {0..9}
         do
 	    python setupCV_computeNetworks.py data/SamSpecCoEN/ACES data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified ${fold} ${repeat}
-	done
+        done
     done
 ```
 This process can easily be parallelized.
@@ -89,7 +89,7 @@ To create the corresponding data folds and networks:
         for fold in {0..9}
         do
 	    python setupCV_computeNetworks.py data/SamSpecCoEN/ACES data/SamSpecCoEN/outputs/U133A_combat_RFS/sampled_loso  ${fold} ${repeat}
-	done
+        done
     done
 ```
 This process can easily be parallelized.
@@ -102,6 +102,47 @@ The class for running a cross-validation experiment is `OuterCrossVal.py`. Inter
 
 ```python OuterCrossVal.py outputs/U133A_combat_DMFS lioness -o 5 -k 5 -m 400``` 
 runs a 5-fold cross-validation experiment on the data stored in folds under `outputs/U133A_combat_DMFS`, for the LIONESS edge weights, using a 5-fold inner cross-validation loop, and returning at most 400 genes (following ACES/FERAL), for (for now) an L1-regularized logistic regression.
+
+### Subtype-stratified cross-validation 
+#### Parallelization at the repeat level
+To run a cross-validation with 5-fold of inner cross-validation (for parameter setting), returning at most 400 features:
+```
+data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified
+for repeat in {0..9}
+do
+    for network in lioness regline
+    do
+        python OuterCrossVal.py ${data_dir}/repeat${repeat} ${network} ${data_dir}/repeat${repeat}/results/${network} -o 10 -k 5 -m 400
+    done
+done
+```
+
+#### Parallelization at the repeat/fold level
+To run a cross-validation with 5-fold of inner cross-validation (for parameter setting), returning at most 400 features:
+```
+data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified
+for repeat in {0..9}
+do
+    for fold in {0..9}
+    do
+        for network in lioness regline
+        do
+            python InnerCrossVal.py ${data_dir}/repeat${repeat}/fold${fold} ${network} ${data_dir}/repeat${repeat}/results/${network}/fold${fold} -k 5 -m 400
+        done
+    done
+done
+```
+Followed by
+```
+data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified
+for repeat in {0..9}
+do
+    for network in lioness regline
+    do
+        python run_OuterCrossVal.py ${data_dir}/repeat${repeat} ${network} ${data_dir}/repeat${repeat}/results/${network} -o 10 -k 5 -m 400
+    done
+done
+```
 
 
 References
