@@ -1,7 +1,7 @@
 # @Author 
 # Chloe-Agathe Azencott
 # chloe-agathe.azencott@mines-paristech.fr
-# January 2016
+# April 2016
 
 import argparse
 import h5py
@@ -95,6 +95,52 @@ class InnerCrossVal(object):
         return self.trainPredInnerL1LogReg(bestRegParam)     
 
         
+    def runInnerL1LogReg_write(self, resdir, regParams=[10.**k for k in range(-3, 3)], ):
+        """ Run the inner loop, using an l1-regularized logistic regression.
+        Save outputs to files.
+        
+        Parameters
+        ----------
+        resdir: path
+            Path to dir where to save outputs
+        regParams: list
+            Range of lambda values to try out.
+            Default: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+        
+        Returns
+        -------
+        predValues: (numTestSamples, ) array
+            Probability estimates for test samples, in the same order as self.Ytr.
+        features: list
+            List of indices of the selected features.
+
+        Write files
+        -----------
+        yte:
+            Contains self.Yte
+        predValues:
+            Contains predictions
+        featuresList:
+            Contains selected features
+        """
+        # Get the optimal value of the regularization parameter by inner cross-validation
+        bestRegParam = self.cvInnerL1LogReg(regParams)
+
+        # Get the predictions and selected features
+        [predValues, featuresList] = self.trainPredInnerL1LogReg(bestRegParam)
+
+        # Save to files
+        yte_fname = '%s/yte' % resdir
+        np.savetxt(yte_fname, self.Yte, fmt='%d')
+        
+        predValues_fname = '%s/predValues' % resdir
+        np.savetxt(predValues_fname, predValues)
+        
+        featuresList_fname = '%s/featuresList' % resdir
+        np.savetxt(featuresList_fname, featuresList, fmt='%d')            
+        
+
+        
     def cvInnerL1LogReg(self, regParams=[10.**k for k in range(-3, 3)]):
         """ Compute the inner cross-validation loop to determine the best regularization parameter
         for an l1-regularized logistic regression.
@@ -161,3 +207,63 @@ class InnerCrossVal(object):
             features = np.argsort(classif.coef_[0])[-self.maxNrFeats:]
 
         return predValues, features
+
+
+def main():
+    """ Run an inner cross-validation on sample-specific co-expression networks.
+    Save results to file.
+
+    Example
+    -------
+        $ python InnerCrossVal.py outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 lioness outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness/fold0 -k 5 -m 400 
+
+    Files created
+    -------------
+    <results_dir>/yte
+        True test labels.
+
+    <results_dir>/predValues
+        Predictions for test samples.
+
+    <results_dir>/featuresList
+        Selected features.
+    """
+    parser = argparse.ArgumentParser(description="Inner CV of sample-specific co-expression networks",
+                                     add_help=True)
+    parser.add_argument("data_path", help="Path to the folder containing the data")
+    parser.add_argument("network_type", help="Type of co-expression networks")
+    parser.add_argument("results_dir", help="Folder where to store results")
+    parser.add_argument("-k", "--num_inner_folds", help="Number of inner cross-validation folds",
+                        type=int)
+    parser.add_argument("-m", "--max_nr_feats", help="Maximum number of selected features",
+                        type=int)
+    args = parser.parse_args()
+
+    try:
+        assert args.network_type in ['lioness', 'regline']
+    except AssertionError:
+        sys.stderr.write("network_type should be one of 'lioness', 'regline'.\n")
+        sys.stderr.write("Aborting.\n")
+        sys.exit(-1)
+
+    # Initialize InnerCrossVal
+    icv = InnerCrossVal(args.data_path, args.network_type, 
+                        args.num_inner_folds, args.max_nr_feats)
+
+    # Create results dir if it does not exist
+    if not os.path.isdir(args.results_dir):
+        sys.stdout.write("Creating %s\n" % args.results_dir)
+        try: 
+            os.makedirs(args.results_dir)
+        except OSError:
+            if not os.path.isdir(args.results_dir):
+                raise
+
+    # Run the inner cross-validation
+    icv.runInnerL1LogReg_write(args.results_dir)
+
+
+
+if __name__ == "__main__":
+    main()
+                

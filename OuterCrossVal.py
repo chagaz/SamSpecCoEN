@@ -1,7 +1,7 @@
 # @Author 
 # Chloe-Agathe Azencott
 # chloe-agathe.azencott@mines-paristech.fr
-# January 2016
+# April 2016
 
 import argparse
 import h5py
@@ -80,7 +80,7 @@ class OuterCrossVal(object):
         self.networkType = networkType
 
         # Read the number of edges
-        self.numEdges = np.loadtxt("%s/edges.gz" % self.dataRoot).shape[0]
+        self.numEdges = np.loadtxt("%s/fold0/edges.gz" % self.dataRoot).shape[0]
         
         
     def runOuterL1LogReg(self):
@@ -115,6 +115,47 @@ class OuterCrossVal(object):
             self.trueLabels[teIndices] = icv.Yte
             self.predValues[teIndices] = predValuesFold
             self.featuresList.append(featuresFold)
+
+        # Convert probability estimates in labels
+        self.predLabels = np.array(self.predValues > 0, dtype='int')
+            
+
+    def readOuterL1LogReg(self, innerCV_resdir):
+        """ Read the results of the outer loop of the experiment,
+        for an l1-regularized logistic regression.
+
+        Parameters
+        ----------
+        innerCV_resdir: path
+            Path to outputs of InnerCrossVal for each fold
+
+        Updated attributes
+        ------------------
+        trueLabels: (numSamples, ) array
+            True labels for all samples.
+        predLabels: (numSamples, ) array
+            Predicted labels for all samples, in the same order as trueLabels.
+        predValues: (numSamples, ) array
+            Probability estimates for all samples, in the same order as trueLabels.
+        featuresList: list of list
+            List of list of indices of the selected features.
+        """
+        for fold in range(self.nrOuterFolds):
+            sys.stdout.write("Reading results for fold number %d\n" % fold)
+
+            # Read the test indices
+            dataFoldRoot = '%s/%d' % (self.dataRoot, fold)
+            teIndices = np.loadtxt('%s/test.indices' % dataFoldRoot, dtype='int')
+            
+            # Read results from InnerCrossVal
+            yte_fname = '%s/fold%d/yte' % (innerCV_resdir, fold)
+            self.trueLabels[teIndices] = np.loadtxt(yte_fname, dtype='int')
+
+            predValues_fname = '%s/fold%d/predValues' % (innerCV_resdir, fold)
+            self.predValues[teIndices] = np.loadtxt(predValues_fname)
+
+            featuresList_fname = '%s/fold%d/featuresList' % (innerCV_resdir, fold)
+            self.featuresList.append(list(np.loadtxt(featuresList_fname, dtype='int')))
 
         # Convert probability estimates in labels
         self.predLabels = np.array(self.predValues > 0, dtype='int')
@@ -200,13 +241,23 @@ class OuterCrossVal(object):
 def main():
     """ Run a cross-validation experiment on sample-specific co-expression networks.
 
-    Example:
-        $ python OuterCrossVal.py outputs/U133A_combat_DMFS lioness -o 5 -k 5 -m 400
+    Example
+    -------
+        $ python OuterCrossVal.py outputs/U133A_combat_DMFS lioness results/U133A_combat_DMFS/lioness -o 5 -k 5 -m 400 
+
+    Files created
+    -------------
+    <results_dir>/results.txt
+        - number of selected features per fold
+        - final AUC
+        - pairwise Fisher overlaps between sets of selected features
+        - pairwise consistencies between sets of selected features
     """
     parser = argparse.ArgumentParser(description="Cross-validate sample-specific co-expression networks",
                                      add_help=True)
     parser.add_argument("data_path", help="Path to the folder containing the data")
     parser.add_argument("network_type", help="Type of co-expression networks")
+    parser.add_argument("results_dir", help="Folder where to store results")
     parser.add_argument("-o", "--num_outer_folds", help="Number of outer cross-validation folds",
                         type=int)
     parser.add_argument("-k", "--num_inner_folds", help="Number of inner cross-validation folds",
@@ -225,7 +276,7 @@ def main():
     # Get the total number of samples
     numSamples = 0
     for foldNr in range(args.num_outer_folds):
-        with open('%s/%d/test.indices' % (args.data_path, foldNr)) as f:
+        with open('%s/fold%d/test.indices' % (args.data_path, foldNr)) as f:
             numSamples += len(f.readlines())
             f.close()
 
@@ -235,28 +286,53 @@ def main():
     # Run the experiment
     ocv.runOuterL1LogReg()
 
-    # Print number of selected features
-    print "Number of features selected per fold: ", [len(x) for x in ocv.featuresList]
-    
-    # Get the AUC
-    print "AUC:", ocv.computeAUC()
+    # Create results dir if it does not exist
+    if not os.path.isdir(args.results_dir):
+        sys.stdout.write("Creating %s\n" % args.results_dir)
+        try: 
+            os.makedirs(args.results_dir)
+        except OSError:
+            if not os.path.isdir(args.results_dir):
+                raise
 
-    # Get the stability (Fisher overlap)
-    fovList = ocv.computeFisherOverlap()
-    print "Stability (Fisher overlap):", fovList 
+    # Open results file
+    res_fname = '%s/results.txt' % args.results_dir
+    with open(res_fname, 'r') as f:
+    
+        # Write number of selected features
+        f.write("Number of features selected per fold:\t")
+        f.write("%s\n" % " ".join["%d" % len(x) for x in ocv.featuresList])
+    
+        # Write AUC
+        f.write("AUC:\t%.2f\n" % ocv.computeAUC())
+
+        # Write the stability (Fisher overlap)
+        fovList = ocv.computeFisherOverlap()
+        f.write("Stability (Fisher overlap):\t")
+        f.write("%s\n" % ["%.2e" % x for x in fovList])
+
+        # Write the stability (consistency index)
+        cixList = ocv.computeConsistency()
+        f.write("Stability (Consistency Index):\t")
+        f.write("%s\n" % ["%.2e" % x for x in cixList])
+
+        f.close()
+
+
+    # Plot the stability (Fisher overlap)
+    fov_fname = '%s/fov.pdf' % args.results_dir
     plt.figure()
     plt.boxplot(fovList, 0, 'gD')
     plt.title('Fisher overlap')
     plt.ylabel('-log10(p-value)')
-    plt.show()
+    plt.savefig(fov_fname, bbox_inches='tight')
 
-    # Get the stability (consistency index)
-    cixList = ocv.computeConsistency()
-    print "Stability (Consistency Index):", cixList
+    # Plot the stability (consistency index)
+    cix_fname = '%s/cix.pdf' % args.results_dir
     plt.figure()
     plt.boxplot(cixList, 0, 'gD')
     plt.title('Consistency Index')
-    plt.show()
+    plt.savefig(cix_fname, bbox_inches='tight')
     
     
 
