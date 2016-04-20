@@ -1,0 +1,20 @@
+# Temporary files
+*~
+
+# DATA FOLDERS
+ACES
+FERAL
+FERAL_supp_data
+GSE_RFS
+GSE_
+outputs/
+
+# Packages
+*.tgz
+
+# Compiled files
+*.pyc
+
+
+# Jupyter notebooks
+.ipynb_checkpoints/

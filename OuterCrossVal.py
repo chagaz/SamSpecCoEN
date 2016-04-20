@@ -5,7 +5,11 @@
 
 import argparse
 import h5py
+
+import matplotlib # in a non-interactive environment
+matplotlib.use('Agg') # in a non-interactive environment
 import matplotlib.pyplot as plt
+
 import numpy as np
 import os
 import scipy.stats as st
@@ -144,7 +148,7 @@ class OuterCrossVal(object):
             sys.stdout.write("Reading results for fold number %d\n" % fold)
 
             # Read the test indices
-            dataFoldRoot = '%s/%d' % (self.dataRoot, fold)
+            dataFoldRoot = '%s/fold%d' % (self.dataRoot, fold)
             teIndices = np.loadtxt('%s/test.indices' % dataFoldRoot, dtype='int')
             
             # Read results from InnerCrossVal
@@ -155,7 +159,7 @@ class OuterCrossVal(object):
             self.predValues[teIndices] = np.loadtxt(predValues_fname)
 
             featuresList_fname = '%s/fold%d/featuresList' % (innerCV_resdir, fold)
-            self.featuresList.append(list(np.loadtxt(featuresList_fname, dtype='int')))
+            self.featuresList.append(np.loadtxt(featuresList_fname, dtype='int'))
 
         # Convert probability estimates in labels
         self.predLabels = np.array(self.predValues > 0, dtype='int')
@@ -297,11 +301,11 @@ def main():
 
     # Open results file
     res_fname = '%s/results.txt' % args.results_dir
-    with open(res_fname, 'r') as f:
+    with open(res_fname, 'w') as f:
     
         # Write number of selected features
         f.write("Number of features selected per fold:\t")
-        f.write("%s\n" % " ".join["%d" % len(x) for x in ocv.featuresList])
+        f.write("%s\n" % " ".join(["%d" % len(x) for x in ocv.featuresList]))
     
         # Write AUC
         f.write("AUC:\t%.2f\n" % ocv.computeAUC())

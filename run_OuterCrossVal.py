@@ -5,7 +5,11 @@
 
 import argparse
 import h5py
+
+import matplotlib # in a non-interactive environment
+matplotlib.use('Agg') # in a non-interactive environment
 import matplotlib.pyplot as plt
+
 import numpy as np
 import os
 import scipy.stats as st
@@ -62,19 +66,19 @@ def main():
             f.close()
 
     # Initialize OuterCrossVal
-    ocv = OuterCrossVal(args.data_path, args.network_type, numSamples,
-                        args.num_inner_folds, args.num_outer_folds, args.max_nr_feats)
+    ocv = OuterCrossVal.OuterCrossVal(args.data_path, args.network_type, numSamples,
+                                      args.num_inner_folds, args.num_outer_folds, args.max_nr_feats)
     
     # Read outputs from inner cross-validation experiments
-    ocv.readOuterL1LogReg()
+    ocv.readOuterL1LogReg(args.results_dir)
 
     # Open results file for writing
     res_fname = '%s/results.txt' % args.results_dir
-    with open(res_fname, 'r') as f:
+    with open(res_fname, 'w') as f:
     
         # Write number of selected features
         f.write("Number of features selected per fold:\t")
-        f.write("%s\n" % " ".join["%d" % len(x) for x in ocv.featuresList])
+        f.write("%s\n" % " ".join(["%d" % len(x) for x in ocv.featuresList]))
     
         # Write AUC
         f.write("AUC:\t%.2f\n" % ocv.computeAUC())
