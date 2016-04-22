@@ -30,7 +30,7 @@ Python packages
 
 ACES
 ----
-* Download from [http://ccb.nki.nl/software/aces/]http://ccb.nki.nl/software/aces/ 
+* Download from [http://ccb.nki.nl/software/aces/](http://ccb.nki.nl/software/aces/)
 * untar in this (SamSpecCoEN) directory
 * add an empty file __init__.py under ACES/experiments
 * make sure to have the required Python packages (in particular, xlrd)
@@ -105,29 +105,38 @@ runs a 5-fold cross-validation experiment on the data stored in folds under `out
 
 ### Subtype-stratified cross-validation 
 #### Parallelization at the repeat level
-To run a cross-validation with 5-fold of inner cross-validation (for parameter setting), returning at most 400 features:
+To run a cross-validation with 5-fold of inner cross-validation (for parameter setting), returning at most 1000 features:
 ```
 data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified
+aces_dir=data/SamSpecCoEN/ACES # downloaded from http://ccb.nki.nl/software/aces/
+
 for repeat in {0..9}
 do
     for network in lioness regline
     do
-        python OuterCrossVal.py ${data_dir}/repeat${repeat} ${network} ${data_dir}/repeat${repeat}/results/${network} -o 10 -k 5 -m 400
+        python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} ${network} ${data_dir}/repeat${repeat}/results/${network} -o 10 -k 5 -m 1000
     done
 done
 ```
 
+The ```--nodes``` option allows you to run the exact same algorithm on the exact same folds, but using the node weights (i.e. gene expression data) directly instead of the edge weights, for comparison purposes (the network type is required but won't be used):
+
+```
+        python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness ${data_dir}/repeat${repeat}/results -o 10 -k 5 -m 1000 --nodes
+```
+
 #### Parallelization at the repeat/fold level
-To run a cross-validation with 5-fold of inner cross-validation (for parameter setting), returning at most 400 features:
+To run a cross-validation with 5-fold of inner cross-validation (for parameter setting), returning at most 1000 features:
 ```
 data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified
+aces_dir=data/SamSpecCoEN/ACES # downloaded from http://ccb.nki.nl/software/aces/
 for repeat in {0..9}
 do
     for fold in {0..9}
     do
         for network in lioness regline
         do
-            python InnerCrossVal.py ${data_dir}/repeat${repeat}/fold${fold} ${network} ${data_dir}/repeat${repeat}/results/${network}/fold${fold} -k 5 -m 400
+            python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} ${network} ${data_dir}/repeat${repeat}/results/${network}/fold${fold} -k 5 -m 1000
         done
     done
 done
@@ -135,14 +144,24 @@ done
 Followed by
 ```
 data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified
+aces_dir=data/SamSpecCoEN/ACES # downloaded from http://ccb.nki.nl/software/aces/
+
 for repeat in {0..9}
 do
     for network in lioness regline
     do
-        python run_OuterCrossVal.py ${data_dir}/repeat${repeat} ${network} ${data_dir}/repeat${repeat}/results/${network} -o 10 -k 5 -m 400
+        python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} ${network} ${data_dir}/repeat${repeat}/results/${network} -o 10 -k 5 -m 1000
     done
 done
 ```
+
+The ```--nodes``` option allows you to run the exact same algorithm on the exact same folds, but using the node weights (i.e. gene expression data) directly instead of the edge weights, for comparison purposes (the network type is required but won't be used):
+
+```
+        python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} lioness ${data_dir}/repeat${repeat}/results/fold${fold} -k 5 -m 1000 --nodes
+        
+        python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness ${data_dir}/repeat${repeat}/results/ -o 10 -k 5 -m 1000        
+```            
 
 
 References
