@@ -18,3 +18,12 @@ outputs/
 
 # Jupyter notebooks
 .ipynb_checkpoints/
+
+
+# LaTex
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.pdf

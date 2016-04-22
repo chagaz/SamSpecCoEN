@@ -1,0 +1,102 @@
+%%% notes.tex --- Some notes relative to SamSpecCoEN
+%%% Author: cazencott@falstaff
+
+\documentclass[12pt,a4paper]{article}
+\usepackage[T1]{fontenc}     
+\usepackage[utf8]{inputenc}            
+
+\usepackage[runin]{abstract}           
+\usepackage{amssymb}                   
+\usepackage{amsmath}                   
+\usepackage{amsthm}                    
+\usepackage{enumitem}                  
+\usepackage[margin=2cm]{geometry}      
+\usepackage{graphicx}                  
+\usepackage{hyperref}                  
+\usepackage[svgnames]{xcolor}          
+
+% Hyperref
+% for a list of colors: p38 of http://mirrors.ibiblio.org/CTAN/macros/latex/contrib/xcolor/xcolor.pdf
+\hypersetup{colorlinks=true,    % false: boxed links; true: colored links
+            linkcolor=teal,     % color of internal links
+            citecolor=teal}     % color of links to bibliography
+% Font
+\usepackage[charter]{mathdesign}
+
+% Edits
+\newcommand{\caz}[1]{{\color{purple}[TODO (CA) : #1]}}
+
+
+\title{Sample-specific co-expression networks}
+\author{Chloé-Agathe Azencott}
+\date{April 2016}
+
+\begin{document}
+
+\maketitle
+
+\section{Stability}
+Others have observed that although incorporating biological networks in the analysis of the ACES data~\cite{staiger2013} does not necessarily improve performance, it helps discovering more {\em stable} predictors~\cite{allahyar2015}.
+
+\section{FERAL}
+FERAL~\cite{allahyar2015} is a state-of-the-art approach for network-based breast cancer outcome prediction from gene-expression profiles.\\
+
+Let us assume $n$ samples, $p$ genes, the expression $X \in \mathbb{R}^{n \times p}$ of these $p$ genes in the $n$ samples, the outcome $Y \in \{0, 1\}^n$ for the $n$ samples, and a biological network over the $p$ genes.\\
+
+FERAL proceeds as follows:
+\begin{enumerate}
+\item The biological network is used to define $G=p$ gene sets $\Psi_g$ as groups of
+  $k=10$ genes, formed by a seed genes (each of the $p$ genes is a seed gene) 
+  and $k-1$ of its closest neighbors (randomly chosen in case of ties).  
+\item The expression data is $z$-score normalized (i.e. mean $0$, standard deviation $1$).
+\item Meta-features are computed for each gene set by 
+  aggregating the expression levels of the genes that compose it
+  according to the following $m=6$ operators:
+  \begin{itemize}
+  \item {\em Average} operator:  \[\mbox{Average}(\Psi_g) = \frac{1}{k} \sum_{j \in \Psi_g} X_j\]
+  \item {\em Direction Aware Average} operator: 
+    \[
+    \mbox{DAA}(\Psi_g) = \frac{1}{k} \sum_{j \in \Psi_g}  \mbox{sgn}(\rho_j) X_j,
+    \]
+    where $\rho_j$ denotes the correlation between $X_j$ and the class label $Y$.
+  \item On the same model, the {\em median}, {\em variance}, {\em min} and {\em max} operators.
+  \end{itemize}
+
+  The initial data representation $X$ is augmented by the resulting $m \times G$ features, 
+  resulting in a final representation $\tilde X \in \mathbb{R}^d$ with $d=(m+1) \times p$.
+
+\item A Sparse Group Lasso classifier~\cite{friedman2010} is trained:
+  $G$ groups of features are formed, corresponding to the $G$ gene sets. 
+  Each group contains the expression levels of the $k$ genes of the gene set, 
+  as well as the $m$ meta-features computed for this gene set. 
+
+  \[
+  \min_{\beta \in \mathbb{R}^d} \left( l(Y, \tilde X  \beta) + \lambda_1 || \beta||_1 + 
+  \lambda_2 \sum_{g=1}^G \sqrt{p_g}\, ||\beta_g||_2 \right),
+  \]
+  where $p_g = |\Psi_g|+m = k+m$ is the size of group $g$, 
+  $\beta_g$ is the weight vector $\beta$ restricted to the indices 
+  corresponding to the features in group  $g$, and $l$ is the logistic loss function.
+
+  \begin{itemize}
+  \item Sample weighting is added to mitigate the effects of class imbalance.
+  \item The parameters $\lambda_1$ and $\lambda_2$ are chosen by inner cross-validation.
+  \end{itemize}
+\item Each gene is assigned a score that is the average of the weights assigned to it and to any group that it belongs to:
+  \[
+  score(j) = \frac{1}{|g: j \in \Psi_g|} \sum_{g: j \in \Psi_g} \beta_g
+  \]
+\end{enumerate}
+
+
+\section{Lioness}
+Lioness~\cite{kuijjer2015} is, to the best of our knowledge, the only existing method to build sample-specific co-expression networks from gene expression data.
+
+\section{Reglines}
+
+
+\bibliographystyle{plain}
+
+\bibliography{references}
+
+\end{document}
