@@ -27,7 +27,7 @@ def main():
     
     Example
     -------
-        $ python run_OuterCrossVal.py outputs/U133A_combat_RFS/subtype_stratified/repeat0 lioness outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness -o 10 -k 5 -m 400 
+        $ python run_OuterCrossVal.py ACES//experiments/data/ outputs/U133A_combat_RFS/subtype_stratified/repeat0 lioness outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness -o 10 -k 5 -m 1000
 
     
     Files created
@@ -40,7 +40,8 @@ def main():
     """
     parser = argparse.ArgumentParser(description="Cross-validate sample-specific co-expression networks",
                                      add_help=True)
-    parser.add_argument("data_path", help="Path to the folder containing the data")
+    parser.add_argument("aces_data_path", help="Path to the folder containing the ACES data")
+    parser.add_argument("network_data_path", help="Path to the folder containing the network data")
     parser.add_argument("network_type", help="Type of co-expression networks")
     parser.add_argument("results_dir", help="Folder where inner cross-validation results are stored")
     parser.add_argument("-o", "--num_outer_folds", help="Number of outer cross-validation folds",
@@ -49,6 +50,8 @@ def main():
                         type=int)
     parser.add_argument("-m", "--max_nr_feats", help="Maximum number of selected features",
                         type=int)
+    parser.add_argument("-n", "--nodes", action='store_true', default=False
+                        help="Work with node weights rather than edge weights")    
     args = parser.parse_args()
 
     try:
@@ -59,18 +62,18 @@ def main():
         sys.exit(-1)
 
     # Get the total number of samples
-    numSamples = 0
-    for foldNr in range(args.num_outer_folds):
-        with open('%s/fold%d/test.indices' % (args.data_path, foldNr)) as f:
-            numSamples += len(f.readlines())
+    num_samples = 0
+    for fold_nr in range(args.num_outer_folds):
+        with open('%s/fold%d/test.indices' % (args.data_path, fold_nr)) as f:
+            num_samples += len(f.readlines())
             f.close()
 
     # Initialize OuterCrossVal
-    ocv = OuterCrossVal.OuterCrossVal(args.data_path, args.network_type, numSamples,
-                                      args.num_inner_folds, args.num_outer_folds, args.max_nr_feats)
+    ocv = OuterCrossVal(args.aces_data_path, args.network_data_path, args.network_type, num_samples,
+                        args.num_inner_folds, args.num_outer_folds, args.max_nr_feats, args.nodes)
     
     # Read outputs from inner cross-validation experiments
-    ocv.readOuterL1LogReg(args.results_dir)
+    ocv.read_outer_l1_logreg(args.results_dir)
 
     # Open results file for writing
     res_fname = '%s/results.txt' % args.results_dir
@@ -78,20 +81,20 @@ def main():
     
         # Write number of selected features
         f.write("Number of features selected per fold:\t")
-        f.write("%s\n" % " ".join(["%d" % len(x) for x in ocv.featuresList]))
+        f.write("%s\n" % " ".join(["%d" % len(x) for x in ocv.features_list]))
     
         # Write AUC
-        f.write("AUC:\t%.2f\n" % ocv.computeAUC())
+        f.write("AUC:\t%.2f\n" % ocv.compute_auc())
 
         # Write the stability (Fisher overlap)
-        fovList = ocv.computeFisherOverlap()
+        fov_list = ocv.compute_fisher_overlap()
         f.write("Stability (Fisher overlap):\t")
-        f.write("%s\n" % ["%.2e" % x for x in fovList])
+        f.write("%s\n" % ["%.2e" % x for x in fov_list])
 
         # Write the stability (consistency index)
-        cixList = ocv.computeConsistency()
+        cix_list = ocv.compute_consistency()
         f.write("Stability (Consistency Index):\t")
-        f.write("%s\n" % ["%.2e" % x for x in cixList])
+        f.write("%s\n" % ["%.2e" % x for x in cix_list])
 
         f.close()
 
@@ -99,7 +102,7 @@ def main():
     # Plot the stability (Fisher overlap)
     fov_fname = '%s/fov.pdf' % args.results_dir
     plt.figure()
-    plt.boxplot(fovList, 0, 'gD')
+    plt.boxplot(fov_list, 0, 'gD')
     plt.title('Fisher overlap')
     plt.ylabel('-log10(p-value)')
     plt.savefig(fov_fname, bbox_inches='tight')
@@ -107,7 +110,7 @@ def main():
     # Plot the stability (consistency index)
     cix_fname = '%s/cix.pdf' % args.results_dir
     plt.figure()
-    plt.boxplot(cixList, 0, 'gD')
+    plt.boxplot(cix_list, 0, 'gD')
     plt.title('Consistency Index')
     plt.savefig(cix_fname, bbox_inches='tight')
     

@@ -27,27 +27,31 @@ class OuterCrossVal(object):
 
     Attributes
     ----------
-    self.dataRoot: path
+    self.aces_data_root: path
+            Path to folder containing ACES data
+    self.network_data_root: path
         Path to folder containing data for all folds.
-    self.networkType: string
+    self.network_type: string
         Type of network to work with
-    self.nrInnerFolds: int
+    self.nr_inner_folds: int
         Number of folds for the inner cross-validation loop.
-    self.nrOuterFolds: int
+    self.nr_outer_folds: int
         Number of folds for the outer cross-validation loop.
-    self.maxNrFeats: int
+    self.max_nr_feats: int
         Maximum number of features to return.
         Default value=400, as in [Staiger et al.]
-    self.trueLabels: (numSamples, ) array
+    self.true_labels: (numSamples, ) array
         True labels for all samples.
-    self.predLabels: (numSamples, ) array
-        Predicted labels for all samples, in the same order as trueLabels.
-    self.predValues: (numSamples, ) array
-        Probability estimates for all samples, in the same order as trueLabels
-    self.featuresList: list of list
+    self.pred_labels: (numSamples, ) array
+        Predicted labels for all samples, in the same order as true_labels.
+    self.pred_values: (numSamples, ) array
+        Probability estimates for all samples, in the same order as true_labels
+    self.features_list: list of list
         List of list of indices of the selected features.
-    self.numEdges: float
-        Total number of features (=edges)
+    self.num_features: float
+        Total number of features
+    self.use_nodes: bool
+        Whether to use node weights rather than edge weights as features.
 
     Reference
     ---------
@@ -55,117 +59,138 @@ class OuterCrossVal(object):
     Current composite-feature classification methods do not outperform simple single-genes
     classifiers in breast cancer prognosis. Front Genet 4.  
     """
-    def __init__(self, dataRoot, networkType, numSamples, nrInnerFolds, nrOuterFolds, maxNrFeats=400):
+    def __init__(self, aces_data_root, network_data_root, network_type, num_samples,
+                 nr_inner_folds, nr_outer_folds, max_nr_feats=400, use_nodes=False):
         """
         Parameters
         ----------
-        dataRoot: path
+        aces_data_root: path
+            Path to folder containing ACES data
+        network_data_root: path
             Path to folder containing data for all folds.
-        networkType: string
+        network_type: string
             Type of network to work with
             Correspond to a folder in dataFoldRoot
             Possible value: 'lioness', 'regline'
-        nrInnerFolds: int
+        nr_inner_folds: int
             Number of folds for the inner cross-validation loop.
-        maxNrFeats: int
+        max_nr_feats: int
             Maximum number of features to return.
             Default value=400.
+        use_nodes: bool
+            Whether to use node weights rather than edge weights as features.
+           (This does not make use of the network information.)
         """
-        self.trueLabels = np.ones((numSamples, ))
-        self.predLabels = np.ones((numSamples, ))
-        self.predValues = np.ones((numSamples, ))
-        self.featuresList = []
+        self.true_labels = np.ones((num_samples, ))
+        self.pred_labels = np.ones((num_samples, ))
+        self.pred_values = np.ones((num_samples, ))
+        self.features_list = []
         
-        self.nrOuterFolds = nrOuterFolds
-        self.nrInnerFolds = nrInnerFolds
-        self.maxNrFeats = maxNrFeats
+        self.nr_outer_folds = nr_outer_folds
+        self.nr_inner_folds = nr_inner_folds
+        self.max_nr_feats = max_nr_feats
 
-        self.dataRoot = dataRoot
-        self.networkType = networkType
+        self.aces_data_root = aces_data_root
+        self.network_data_root = network_data_root
+        self.network_type = network_type
 
-        # Read the number of edges
-        self.numEdges = np.loadtxt("%s/fold0/edges.gz" % self.dataRoot).shape[0]
+        self.use_nodes = use_nodes
+
+        # Read the number of features
+        if self.use_nodes:
+            self.num_features = np.loadtxt("%s/fold0/edges.gz" % self.data_root).shape[0]
+        else:
+            # Read ACES data
+            sys.path.append(aces_data_root)
+            from datatypes.ExpressionDataset import HDF5GroupToExpressionDataset
+            f = h5py.File("%s/experiments/data/U133A_combat.h5" % aces_data_root)
+            aces_data = HDF5GroupToExpressionDataset(f['U133A_combat_RFS'], checkNormalise=False)
+            self.num_features = aces_data.expressionData.shape[1]
+            f.close()
         
         
-    def runOuterL1LogReg(self):
+    def run_outer_l1_logreg(self):
         """ Run the outer loop of the experiment, for an l1-regularized logistic regression.
 
         Updated attributes
         ------------------
-        trueLabels: (numSamples, ) array
+        true_labels: (num_samples, ) array
             True labels for all samples.
-        predLabels: (numSamples, ) array
-            Predicted labels for all samples, in the same order as trueLabels.
-        predValues: (numSamples, ) array
-            Probability estimates for all samples, in the same order as trueLabels.
-        featuresList: list of list
+        pred_labels: (num_samples, ) array
+            Predicted labels for all samples, in the same order as true_labels.
+        pred_values: (num_samples, ) array
+            Probability estimates for all samples, in the same order as true_labels.
+        features_list: list of list
             List of list of indices of the selected features.
         """
-        for fold in range(self.nrOuterFolds):
+        for fold in range(self.nr_outer_folds):
             sys.stdout.write("Working on fold number %d\n" % fold)
 
             # Read the test indices
-            dataFoldRoot = '%s/%d' % (self.dataRoot, fold)
-            teIndices = np.loadtxt('%s/test.indices' % dataFoldRoot, dtype='int')
+            data_fold_root = '%s/fold%d' % (self.data_root, fold)
+            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
             
             # Create an InnerCrossVal
-            icv = InnerCrossVal.InnerCrossVal(dataFoldRoot, self.networkType,
-                                              self.nrInnerFolds, self.maxNrFeats)
+            icv = InnerCrossVal.InnerCrossVal(self.aces_data_path, data_fold_root,
+                                              self.network_type, self.nr_inner_folds,
+                                              self.max_nr_feats, self.use_nodes)
+                                              
 
             # Get predictions and selected features for the inner loop
-            [predValuesFold, featuresFold] = icv.runInnerL1LogReg()
+            reg_params = [2.**k for k in range(-7, -1)]
+            [pred_values_fold, features_fold] = icv.run_inner_l1_logreg(reg_params=reg_params)
 
-            # Update self.trueLabels, self.predLabels, self.featuresList
-            self.trueLabels[teIndices] = icv.Yte
-            self.predValues[teIndices] = predValuesFold
-            self.featuresList.append(featuresFold)
+            # Update self.true_labels, self.pred_labels, self.features_list
+            self.true_labels[te_indices] = icv.y_te
+            self.pred_values[te_indices] = pred_values_fold
+            self.features_list.append(features_fold)
 
         # Convert probability estimates in labels
-        self.predLabels = np.array(self.predValues > 0, dtype='int')
+        self.pred_labels = np.array(self.pred_values > 0, dtype='int')
             
 
-    def readOuterL1LogReg(self, innerCV_resdir):
+    def read_outer_l1_logreg(self, innerCV_resdir):
         """ Read the results of the outer loop of the experiment,
         for an l1-regularized logistic regression.
 
         Parameters
         ----------
-        innerCV_resdir: path
+        inner_cv_resdir: path
             Path to outputs of InnerCrossVal for each fold
 
         Updated attributes
         ------------------
-        trueLabels: (numSamples, ) array
+        true_labels: (num_samples, ) array
             True labels for all samples.
-        predLabels: (numSamples, ) array
-            Predicted labels for all samples, in the same order as trueLabels.
-        predValues: (numSamples, ) array
-            Probability estimates for all samples, in the same order as trueLabels.
-        featuresList: list of list
+        pred_labels: (num_samples, ) array
+            Predicted labels for all samples, in the same order as true_labels.
+        pred_values: (num_samples, ) array
+            Probability estimates for all samples, in the same order as true_labels.
+        features_list: list of list
             List of list of indices of the selected features.
         """
-        for fold in range(self.nrOuterFolds):
+        for fold in range(self.nr_outer_folds):
             sys.stdout.write("Reading results for fold number %d\n" % fold)
 
             # Read the test indices
-            dataFoldRoot = '%s/fold%d' % (self.dataRoot, fold)
-            teIndices = np.loadtxt('%s/test.indices' % dataFoldRoot, dtype='int')
+            data_fold_root = '%s/fold%d' % (self.data_root, fold)
+            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
             
             # Read results from InnerCrossVal
-            yte_fname = '%s/fold%d/yte' % (innerCV_resdir, fold)
-            self.trueLabels[teIndices] = np.loadtxt(yte_fname, dtype='int')
+            yte_fname = '%s/fold%d/yte' % (inner_cv_resdir, fold)
+            self.true_labels[te_indices] = np.loadtxt(yte_fname, dtype='int')
 
-            predValues_fname = '%s/fold%d/predValues' % (innerCV_resdir, fold)
-            self.predValues[teIndices] = np.loadtxt(predValues_fname)
+            pred_values_fname = '%s/fold%d/predValues' % (inner_cv_resdir, fold)
+            self.pred_values[te_indices] = np.loadtxt(pred_values_fname)
 
-            featuresList_fname = '%s/fold%d/featuresList' % (innerCV_resdir, fold)
-            self.featuresList.append(np.loadtxt(featuresList_fname, dtype='int'))
+            features_list_fname = '%s/fold%d/featuresList' % (inner_cv_resdir, fold)
+            self.features_list.append(np.loadtxt(features_list_fname, dtype='int'))
 
         # Convert probability estimates in labels
-        self.predLabels = np.array(self.predValues > 0, dtype='int')
+        self.pred_labels = np.array(self.pred_values > 0, dtype='int')
             
 
-    def computeAUC(self):
+    def compute_auc(self):
         """ Compute the AUC of the experiment.
 
         Returns
@@ -173,10 +198,10 @@ class OuterCrossVal(object):
         auc: float
            Area under the ROC curve for the experiment.
         """
-        return skm.roc_auc_score(self.trueLabels, self.predValues)
+        return skm.roc_auc_score(self.true_labels, self.pred_values)
         
 
-    def computeFisherOverlap(self):
+    def compute_fisher_overlap(self):
         """ Compute the pairwise Fisher overlaps between the sets of selected features.
 
         Fisher overlap = -log10 of the p-value of the Fisher exact test for the following
@@ -200,26 +225,26 @@ class OuterCrossVal(object):
         classifiers in breast cancer prognosis. Front Genet 4.  
 
         """
-        allFeatures = set(range(self.numEdges))
-        fovList = []
-        for setIdx1 in range(len(self.featuresList)):
-            featureSet1 = set(self.featuresList[setIdx1].tolist())
-            for setIdx2 in range(setIdx1+1, len(self.featuresList)):
-                featureSet2 = set(self.featuresList[setIdx2].tolist())
-                contingency = [[len(featureSet1.intersection(featureSet2)),
-                                len(featureSet2.difference(featureSet1))],
-                               [len(featureSet1.difference(featureSet2)),
-                                len(allFeatures.difference(featureSet1.union(featureSet2)))]]
-                fovList.append(-np.log10(st.fisher_exact(contingency, alternative='greater')[1]))
-        return fovList
+        allFeatures = set(range(self.num_features))
+        fov_list = []
+        for set_idx1 in range(len(self.features_list)):
+            feature_set1 = set(self.features_list[set_idx1].tolist())
+            for set_idx2 in range(set_idx1+1, len(self.features_list)):
+                feature_set2 = set(self.features_list[set_idx2].tolist())
+                contingency = [[len(feature_set1.intersection(feature_set2)),
+                                len(feature_set2.difference(feature_set1))],
+                               [len(feature_set1.difference(feature_set2)),
+                                len(allFeatures.difference(feature_set1.union(feature_set2)))]]
+                fov_list.append(-np.log10(st.fisher_exact(contingency, alternative='greater')[1]))
+        return fov_list
 
 
-    def computeConsistency(self):
+    def compute_consistency(self):
         """ Compute the pairwise consistency indices between the sets of selected features.
 
         Returns
         -------
-        cixList: list
+        cix_list: list
             List of pairwise consistency indices between the sets of selected features.
 
         Reference
@@ -227,19 +252,19 @@ class OuterCrossVal(object):
         Kuncheva, L.I. (2007).
         A Stability Index for Feature Selection. AIA, pp. 390--395.
         """
-        cixList = []
-        for setIdx1 in range(len(self.featuresList)):
-            featureSet1 = set(self.featuresList[setIdx1])
-            for setIdx2 in range(setIdx1+1, len(self.featuresList)):
-                featureSet2 = set(self.featuresList[setIdx2])
-                observed = float(len(featureSet1.intersection(featureSet2)))
-                expected = len(featureSet1) * len(featureSet2) / float(self.numEdges)
-                maxposbl = float(min(len(featureSet1), len(featureSet2)))
+        cix_list = []
+        for set_idx1 in range(len(self.features_list)):
+            feature_set1 = set(self.features_list[set_idx1])
+            for set_idx2 in range(set_idx1+1, len(self.features_list)):
+                feature_set2 = set(self.features_list[set_idx2])
+                observed = float(len(feature_set1.intersection(feature_set2)))
+                expected = len(feature_set1) * len(feature_set2) / float(self.num_features)
+                maxposbl = float(min(len(feature_set1), len(feature_set2)))
                 if expected == maxposbl:
-                    cixList.append(0.)
+                    cix_list.append(0.)
                 else:
-                    cixList.append((observed - expected) / (maxposbl - expected))
-        return cixList
+                    cix_list.append((observed - expected) / (maxposbl - expected))
+        return cix_list
         
 
 def main():
@@ -247,7 +272,7 @@ def main():
 
     Example
     -------
-        $ python OuterCrossVal.py outputs/U133A_combat_DMFS lioness results/U133A_combat_DMFS/lioness -o 5 -k 5 -m 400 
+        $ python OuterCrossVal.py ACES/ outputs/U133A_combat_DMFS lioness results/U133A_combat_DMFS/lioness -o 5 -k 5 -m 1000
 
     Files created
     -------------
@@ -259,7 +284,8 @@ def main():
     """
     parser = argparse.ArgumentParser(description="Cross-validate sample-specific co-expression networks",
                                      add_help=True)
-    parser.add_argument("data_path", help="Path to the folder containing the data")
+    parser.add_argument("aces_data_path", help="Path to the folder containing the ACES data")
+    parser.add_argument("network_data_path", help="Path to the folder containing the network data")
     parser.add_argument("network_type", help="Type of co-expression networks")
     parser.add_argument("results_dir", help="Folder where to store results")
     parser.add_argument("-o", "--num_outer_folds", help="Number of outer cross-validation folds",
@@ -268,6 +294,8 @@ def main():
                         type=int)
     parser.add_argument("-m", "--max_nr_feats", help="Maximum number of selected features",
                         type=int)
+    parser.add_argument("-n", "--nodes", action='store_true', default=False
+                        help="Work with node weights rather than edge weights")
     args = parser.parse_args()
 
     try:
@@ -278,17 +306,17 @@ def main():
         sys.exit(-1)
 
     # Get the total number of samples
-    numSamples = 0
-    for foldNr in range(args.num_outer_folds):
-        with open('%s/fold%d/test.indices' % (args.data_path, foldNr)) as f:
-            numSamples += len(f.readlines())
+    num_samples = 0
+    for fold_nr in range(args.num_outer_folds):
+        with open('%s/fold%d/test.indices' % (args.netowrk_data_path, fold_nr)) as f:
+            num_samples += len(f.readlines())
             f.close()
 
     # Initialize OuterCrossVal
-    ocv = OuterCrossVal(args.data_path, args.network_type, numSamples,
-                        args.num_inner_folds, args.num_outer_folds, args.max_nr_feats)
+    ocv = OuterCrossVal(args.aces_data_path, args.network_data_path, args.network_type, num_samples,
+                        args.num_inner_folds, args.num_outer_folds, args.max_nr_feats, args.nodes)
     # Run the experiment
-    ocv.runOuterL1LogReg()
+    ocv.run_outer_l1_logreg()
 
     # Create results dir if it does not exist
     if not os.path.isdir(args.results_dir):
@@ -299,26 +327,30 @@ def main():
             if not os.path.isdir(args.results_dir):
                 raise
 
+
+    print "Number of features:\t", [len(x) for x in ocv.features_list]
+    print "AUC:\t", ocv.compute_auc()
+
     # Open results file
     res_fname = '%s/results.txt' % args.results_dir
     with open(res_fname, 'w') as f:
     
         # Write number of selected features
         f.write("Number of features selected per fold:\t")
-        f.write("%s\n" % " ".join(["%d" % len(x) for x in ocv.featuresList]))
+        f.write("%s\n" % " ".join(["%d" % len(x) for x in ocv.features_list]))
     
         # Write AUC
-        f.write("AUC:\t%.2f\n" % ocv.computeAUC())
+        f.write("AUC:\t%.2f\n" % ocv.compute_auc())
 
         # Write the stability (Fisher overlap)
-        fovList = ocv.computeFisherOverlap()
+        fov_list = ocv.compute_fisher_overlap()
         f.write("Stability (Fisher overlap):\t")
-        f.write("%s\n" % ["%.2e" % x for x in fovList])
+        f.write("%s\n" % ["%.2e" % x for x in fov_list])
 
         # Write the stability (consistency index)
-        cixList = ocv.computeConsistency()
+        cix_list = ocv.compute_consistency()
         f.write("Stability (Consistency Index):\t")
-        f.write("%s\n" % ["%.2e" % x for x in cixList])
+        f.write("%s\n" % ["%.2e" % x for x in cix_list])
 
         f.close()
 
@@ -326,7 +358,7 @@ def main():
     # Plot the stability (Fisher overlap)
     fov_fname = '%s/fov.pdf' % args.results_dir
     plt.figure()
-    plt.boxplot(fovList, 0, 'gD')
+    plt.boxplot(fov_list, 0, 'gD')
     plt.title('Fisher overlap')
     plt.ylabel('-log10(p-value)')
     plt.savefig(fov_fname, bbox_inches='tight')
@@ -334,7 +366,7 @@ def main():
     # Plot the stability (consistency index)
     cix_fname = '%s/cix.pdf' % args.results_dir
     plt.figure()
-    plt.boxplot(cixList, 0, 'gD')
+    plt.boxplot(cix_list, 0, 'gD')
     plt.title('Consistency Index')
     plt.savefig(cix_fname, bbox_inches='tight')
     
