@@ -4,26 +4,34 @@
 # April 2016
 
 import argparse
+import gzip
 import h5py
+import itertools
 import numpy as np
 import os
+import subprocess
 import sys
+import tempfile
+
+import scipy.stats as st 
 
 from sklearn import linear_model as sklm 
 from sklearn import  metrics as skm
+from sklearn import cross_validation as skcv 
+
 
 class InnerCrossVal(object):
     """ Manage the inner cross-validation loop for learning on sample-specific co-expression networks.
 
     Attributes
     ----------
-    self.x_tr: (numEdges, numTrainingSamples) array
-        Edge weights for the samples of the training data.
-    self.x_te: (numEdges, num TestingSamples) array
-        Edge weights for the samples of the test data.
-    self.y_tr: (numTrainingSamples, ) array
+    self.x_tr: (num_features, num_training_samples) array
+        Feature values for the samples of the training data.
+    self.x_te: (num_features, num_test_samples) array
+        Feature weights for the samples of the test data.
+    self.y_tr: (num_training_samples, ) array
         Labels (0/1) of the training samples.
-    self.y_te: (numTestSamples, ) array
+    self.y_te: (num_test_samples, ) array
         Labels (0/1) of the test samples.
     self.nr_folds: int
         Number of folds for the inner cross-validation loop.
@@ -33,6 +41,15 @@ class InnerCrossVal(object):
 
     Optional attributes
     -------------------
+    In case we want to use sfan (use_sfan=True):
+    self.sfan_path: path
+        Path to sfan code.
+    self.node_weights_f: path
+        File where to store node weights (computed based on correlation betwen self.x_tr and self.y_tr).
+    self.ntwk_dimacs_f: path
+        Dimacs version of edges.gz
+    self.connected_nodes_map: dict
+        Map node IDs in dimacs file to node indices in self.x_tr
 
     Reference
     ---------
@@ -41,7 +58,7 @@ class InnerCrossVal(object):
     classifiers in breast cancer prognosis. Front Genet 4.  
     """
     def __init__(self, aces_data_root, data_fold_root, network_type, nr_folds,
-                 max_nr_feats=400, use_nodes=False):
+                 max_nr_feats=400, use_nodes=False, use_sfan=False, sfan_path=None):
         """
         Parameters
         ----------
@@ -60,6 +77,10 @@ class InnerCrossVal(object):
         use_nodes: bool
             Whether to use node weights rather than edge weights as features.
            (This does not make use of the network information.)
+        use_sfan: bool
+            Whether to use sfan on {node weights + network structure} rather than edge weights.
+        sfan_path: path
+            Path to sfan code.
         """
         try:
             assert network_type in ['lioness', 'regline']
@@ -68,7 +89,7 @@ class InnerCrossVal(object):
             sys.stderr.write("Aborting.\n")
             sys.exit(-1)
 
-        if use_nodes:
+        if use_nodes or use_sfan:
             print "Using node weights as features"
             # Read ACES data
             sys.path.append(aces_data_root)
@@ -105,16 +126,157 @@ class InnerCrossVal(object):
 
         self.nr_folds = nr_folds
         self.max_nr_feats = max_nr_feats
+
+        # Compute extra files for the usage of sfan:
+        if use_sfan:
+            # Node weights
+            self.node_weights_f = '%s/scores.txt' % data_fold_root
+            self.compute_node_weights()
+
+            # Dimacs network and connected nodes
+            self.ntwk_dimacs_f = '%s/network.dimacs' % data_fold_root
+            edges_f = '%s/edges.gz' % data_fold_root
+            self.compute_dimacs(edges_f)
+
+            self.sfan_path = sfan_path
+            sys.path.append(self.sfan_path)
+            import evaluation_framework as ef
+
+
+    def compute_node_weights(self):
+        """ Compute node weights in the sfan framework.
+        
+        Each node is assigned the squared Pearson correlation of its corresponding feature
+        with the phenotype.
+
+        Modified file
+        -------------
+        self.node_weights_f: path
+            File where to store node weights
+            (computed based on correlation betwen self.x_tr and self.y_tr).        
+        """
+        num_nodes = self.x_tr.shape[1]
+
+        scores = [st.pearsonr(self.x_tr[:, node_idx], self.y_tr)[0]**2 \
+                  for node_idx in range(num_nodes)]
+
+        np.savetxt(self.node_weights_f, scores, fmt='%.3e')
+        
+        
+    def compute_dimacs(self, edges_f):
+        """ Compute dimacs version of the network file edges.gz.
+
+        Nodes that are not connected to any other are eliminated.
+
+        Input file
+        ----------
+        edges_f: gzipped file
+            Gzipped file containing the list of edges of the co-expression networks.
+            Each line is an undirected edge, formatted as:
+                <index of gene 1> <index of gene 2>
+            By convention, the index of gene 1 is smaller than that of gene 2.
+
+        Modified file
+        -------------
+        self.ntwk_dimacs_f: path
+            Dimacs version of edges.gz
+
+        Modified attribute
+        ------------------
+        self.connected_nodes_map: dict
+            Map node IDs in dimacs file to node indices in self.x_tr.
+        """
+        sym_edges_dict = {} #j:[i]
+        last_idx = 0
+
+        # Temporary dimacs file (non-final node IDs)
+        tmp_fname = 'tmp.dimacs'
+        fd, tmp_fname = tempfile.mkstemp()
+
+        # Keep track of nodes that have at least one neighbor
+        connected_nodes = set([]) 
+
+        with open(tmp_fname, 'w') as g:
+            g.write("p max %d %d\n" % (num_genes, num_edges*2))
+            with gzip.open(edges_f, 'r') as f:     
+                for line in f:
+                    idx_1, idx_2 = [int(x) for x in line.split()]
+                    # track nodes as connected
+                    connected_nodes.add(idx_1)
+                    connected_nodes.add(idx_2)
+                    # write edges saved in sym_edges_dict:
+                    for idx_3 in range(last_idx, idx_1+1):
+                        if sym_edges_dict.has_key(idx_3):
+                            for idx_0 in sym_edges_dict[idx_3]:
+                                g.write("a %d %d 1\n" % (idx_3, idx_0))
+                            # delete these entries
+                            del sym_edges_dict[idx_3]                   
+                    # update last_idx
+                    last_idx = idx_1            
+                    # write this edge
+                    g.write("a %d %d 1\n" % (idx_1, idx_2))
+                    # add to dictionary
+                    if not sym_edges_dict.has_key(idx_2):
+                        sym_edges_dict[idx_2] = []
+                    sym_edges_dict[idx_2].append(idx_1)
+                f.close()        
+                # write the end of the dictionary
+                if len(sym_edges_dict):
+                    sym_edges_dict_keys = sym_edges_dict.keys()
+                    sym_edges_dict_keys.sort()
+                    for idx_1 in sym_edges_dict_keys:
+                        for idx_0 in sym_edges_dict[idx_1]:
+                            g.write("a %d %d 1\n" % (idx_1, idx_0))
+            g.close()           
+
+        # Restrict data to nodes that belong to the network:
+        connected_nodes = list(connected_nodes)
+        connected_nodes.sort()
+        Ztr_norm_sfan = Ztr_norm[:, connected_nodes]
+        Zte_norm_sfan = Zte_norm[:, connected_nodes]
+
+        num_genes_in_ntwk = len(connected_nodes)
+        print "%d nodes in the network." % num_genes_in_ntwk
+
+        # Map node indices in temporary dimacs to node IDs in the final ones
+        # and conversely
+        map_idx = {}
+        self.connected_nodes_map = {}
+        for (old_idx, new_idx) in zip(connected_nodes, range(num_genes_in_ntwk)):
+            map_idx[old_idx] = new_idx + 1 # indices start at 1 in dimacs file
+            self.connected_nodes_map[(new_idx + 1)] = old_idx
+            
+        # Update node IDs in ntwk_dimacs
+        with open(ntwk_dimacs_f, 'w') as g:
+            g.write("p max %d %d\n" % (num_genes_in_ntwk, num_edges*2))
+            with open(tmp_fname, 'r') as f:
+                f.readline() # header
+                for line in f:
+                    ls = line.split()
+                    g.write("a %d %d %s\n" % (map_idx[int(ls[1])], map_idx[int(ls[2])], ls[3]))
+                f.close()
+            g.close()
+
+        # Delete temporary file
+        os.remove(tmp_fname)        
         
 
-    def run_inner_l1_logreg(self, reg_params=[10.**k for k in range(-3, 3)]):
-        """ Run the inner loop, using an l1-regularized logistic regression.
+    def run_inner_sfan(self, reg_params=[itertools.product([10.**k for k in range(-3, 3)],
+                                                           [2.**k for k in range(-8, -2)]),
+                                         [10.**k for k in range(-3, 3)]]):
+                       
+        """ Run the inner loop, using sfan for feature selection,
+        and a ridge-regression on the selected features for final prediction.
         
         Parameters
         ----------
         reg_params: list
-            Range of lambda values to try out.
-            Default: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+            Range of lambda values and eta values to try out,
+            and of lambda values for the ridge regression on the selected features.
+        
+            Default: [itertools.product([0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+                               [0.00390625, 0.0078125, 0.015625, 0.03125, 0.0625, 0.125]),
+                      [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]]
         
         Returns
         -------
@@ -124,10 +286,244 @@ class InnerCrossVal(object):
             List of indices of the selected features.
         """
         # Get the optimal value of the regularization parameter by inner cross-validation
-        best_reg_param = self.cv_inner_l1_logreg(reg_params)
+        best_reg_param = self.cv_inner_sfan(reg_params)
 
         # Return the predictions and selected features
-        return self.train_pred_inner_l1_logreg(best_reg_param)     
+        return self.train_pred_inner_sfan(best_reg_param)     
+
+        
+    def run_inner_sfan_write(self, resdir, reg_params=[itertools.product([10.**k for k in range(-3, 3)],
+                                                                         [2.**k for k in range(-8, -2)]),
+                                                       [10.**k for k in range(-3, 3)]]):
+        """ Run the inner loop, using using sfan for feature selection,
+        and a ridge-regression on the selected features for final prediction.
+        Save outputs to files.
+        
+        Parameters
+        ----------
+        resdir: path
+            Path to dir where to save outputs
+        reg_params: list
+            Range of lambda values and eta values to try out for sfan,
+            and of lambda values for the ridge regression on the selected features.
+        
+            Default: [itertools.product([0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+                               [0.00390625, 0.0078125, 0.015625, 0.03125, 0.0625, 0.125]),
+                      [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]]
+        
+        Returns
+        -------
+        pred_values: (num_test_samples, ) array
+            Probability estimates for test samples, in the same order as self.y_tr.
+        features: list
+            List of indices of the selected features.
+
+        Write files
+        -----------
+        yte:
+            Contains self.y_te
+        pred_values:
+            Contains predictions
+        featuresList:
+            Contains selected features
+        """
+        # Get the optimal value of the regularization parameter by inner cross-validation
+        best_reg_param = self.cv_inner_sfan(reg_params)
+
+        # Get the predictions and selected features
+        [pred_values, features_list] = self.train_pred_inner_sfan(best_reg_param)
+
+        # Save to files
+        yte_fname = '%s/yte' % resdir
+        np.savetxt(yte_fname, self.y_te, fmt='%d')
+        
+        pred_values_fname = '%s/predValues' % resdir
+        np.savetxt(pred_values_fname, pred_values)
+        
+        features_list_fname = '%s/featuresList' % resdir
+        np.savetxt(features_list_fname, features_list, fmt='%d')            
+        
+
+        
+    def cv_inner_sfan(self, reg_params=[itertools.product([10.**k for k in range(-3, 3)],
+                                                          [2.**k for k in range(-8, -2)]),
+                                        [10.**k for k in range(-3, 3)]]):
+        """ Compute the inner cross-validation loop to determine the best regularization parameters
+        to select features using sfan,
+        and classify the data with an l2-regularized logistic regression.
+        
+        Parameters
+        ----------
+        reg_params: list
+            Range of lambda values and eta values to try out for sfan,
+            and of lambda values for the ridge regression on the selected features.
+
+            Default: [itertools.product([0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+                               [0.00390625, 0.0078125, 0.015625, 0.03125, 0.0625, 0.125]),
+                      [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]]
+        
+        Returns
+        -------
+        best_reg_param: float
+            Optimal values of the regularization parameters:
+            lambda_sfan, eta_sfan, C_ridge.
+        """
+        msfanpy = '%s/multitask_sfan.py' % self.sfan_path
+        
+        # Create cross-validation split of the training data
+        cross_validator = skcv.StratifiedKFold(self.y_tr, self.nr_folds)
+                
+        # Create temporary node_weights files for all splits
+        tmp_node_weights_f_list = []
+        num_nodes = self.x_tr.shape[1]
+        for tr, te in cross_validator:
+            scores = [st.pearsonr(self.x_tr[tr, node_idx], self.y_tr[tr])[0]**2 \
+                      for node_idx in range(num_nodes)]
+
+            fd, tmp_node_weights_f = tempfile.mkstemp()
+            np.savetxt(tmp_node_weights_f, scores, fmt='%.3e')
+
+            tmp_node_weights_f_list.append(tmp_node_weights_f)
+        
+        # Cross-validate parameters for feature selection
+        best_reg_param = []
+        best_ci = -1.0
+        for (lbd, eta) in reg_params[0]:
+            sel_list = []
+            for tmp_node_weights_f in tmp_node_weights_f_list:
+                argum = ['python', msfanpy, '--num_tasks', '1',
+                         '--networks', self.ntwk_dimacs_f, 
+                         '--node_weights', tmp_node_weights_f,
+                         '-l', lbd, '-e', eta, '-m', '0']
+                print "Running: ", " ".join(argum)
+                p = subprocess.Popen(argum, stdout=subprocess.PIPE)
+                p_out = p.communicate()[0].split("\n")[2]
+                sel_list.append([int(x) for x in p_out.split()])
+            ci = ef.consistency_index_k(sel_list, len(self.connected_nodes_map))
+            if ci >= best_ci:
+                best_reg_param = [lbd, eta]
+                ci = best_ci
+
+        # Delete temporary node_weights files
+        for tmp_node_weights_f in tmp_node_weights_f_list:
+            os.remove(tmp_node_weights_f)
+
+        # Run feature selection with sfan on whole training data, with optimal parameters
+        argum = ['python', msfanpy, '--num_tasks', '1',
+                 '--networks', self.ntwk_dimacs_f, 
+                 '--node_weights', self.node_weights_f,
+                 '-l', best_reg_param[0], '-e', best_reg_param[1], '-m', '0']
+        print "Running: ", " ".join(argum)
+        p = subprocess.Popen(argum, stdout=subprocess.PIPE)
+        p_out = p.communicate()[0].split("\n")[2]
+        selected_features = [self.connected_nodes_map[int(x)] for x in p_out.split()]
+
+        # Initialize logistic regression cross-validation classifier
+        cv_clf = sklm.LogisticRegressionCV(Cs=reg_params[1], penalty='l2', solver='liblinear',
+                                           cv=self.nr_folds,
+                                           class_weight='balanced', scoring='roc_auc')
+
+        # Fit to training data, restricted to selected_features
+        cv_clf.fit(self.x_tr[:, selected_features], self.y_tr)
+
+        # Quality of fit?
+        y_tr_pred = cv_clf.predict_proba(self.x_tr[:, selected_features])
+        y_tr_pred = y_tr_pred[:, cv_clf.classes_.tolist().index(1)]
+        print "\tTraining AUC:\t", skm.roc_auc_score(self.y_tr, y_tr_pred)
+
+        # Get optimal value of C_ridge.
+        # If there are multiple equivalent values, return the first one.
+        # Note: Small C = more regularization.
+        best_C_ridge = cv_clf.C_[0]
+        print "\tall top C:\t", cv_clf.C_
+        print "\tbest C:\t", best_C_ridge
+
+        best_reg_param.append(best_C_ridge)
+        return best_reg_param
+
+        
+    def train_pred_inner_sfan(self, best_reg_param):
+        """ Run sfan (with optimal parameters) on the train set to select features,
+        then train an l2-regularized logistic regression (with optimal parameter)
+        on the train set, predict on the test set.
+        
+        Parameters
+        ----------
+        best_reg_param: float list
+            Optimal value of the regularization parameters:
+            lambda_sfan, eta_sfan, C_ridge.
+
+        Returns
+        -------
+        pred_values: (num_test_samples, ) array
+            Probability estimates for test samples, in the same order as trueLabels.
+        features: list
+            List of indices of the selected features.
+        """
+        # Run feature selection with sfan on whole training data, with optimal parameters
+        argum = ['python', msfanpy, '--num_tasks', '1',
+                 '--networks', self.ntwk_dimacs_f, 
+                 '--node_weights', self.node_weights_f,
+                 '-l', best_reg_param[0], '-e', best_reg_param[1], '-m', '0']
+        print "Running: ", " ".join(argum)
+        p = subprocess.Popen(argum, stdout=subprocess.PIPE)
+        p_out = p.communicate()[0].split("\n")[2]
+        features = [self.connected_nodes_map[int(x)] for x in p_out.split()]
+        
+        # Initialize l2-regularized logistic regression classifier
+        classif = sklm.LogisticRegression(C=best_reg_param[2], penalty='l2',
+                                          solver='liblinear',
+                                          class_weight='balanced')
+        
+        # Train on the training set
+        classif.fit(self.x_tr[:, features], self.y_tr)
+
+        # Predict on the test set
+        pred_values = classif.predict_proba(self.x_te[:, features])
+
+        # Only get the probability estimates for the positive class
+        pred_values = pred_values[:, classif.classes_.tolist().index(1)]
+
+        # Quality of fit
+        print "\tTest AUC:\t", skm.roc_auc_score(self.y_te, pred_values)
+
+        print "\tNumber of selected features:\t", len(features)
+
+        return pred_values, features
+                       
+
+    def run_inner_l1_logreg(self, resdir, reg_params=[10.**k for k in range(-3, 3)], ):
+        """ Run the inner loop, using an l1-regularized logistic regression.
+        
+        Parameters
+        ----------
+        resdir: path
+            Path to dir where to save outputs
+        reg_params: list
+            Range of lambda values to try out.
+            Default: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+        
+        Returns
+        -------
+        pred_values: (num_test_samples, ) array
+            Probability estimates for test samples, in the same order as self.y_tr.
+        features: list
+            List of indices of the selected features.
+
+        Write files
+        -----------
+        yte:
+            Contains self.y_te
+        pred_values:
+            Contains predictions
+        featuresList:
+            Contains selected features
+        """
+        # Get the optimal value of the regularization parameter by inner cross-validation
+        best_reg_param = self.cv_inner_l1_logreg(reg_params)
+
+        # Get the predictions and selected features
+        return self.train_pred_inner_l1_logreg(best_reg_param)
 
         
     def run_inner_l1_logreg_write(self, resdir, reg_params=[10.**k for k in range(-3, 3)], ):
@@ -255,7 +651,7 @@ class InnerCrossVal(object):
         print "\tNumber of selected features:\t", len(features)
 
         return pred_values, features
-
+        
 
 def main():
     """ Run an inner cross-validation on sample-specific co-expression networks.
@@ -263,7 +659,12 @@ def main():
 
     Example
     -------
-        $ python InnerCrossVal.py ACES outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 lioness outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness/fold0 -k 5 -m 1000 
+        $ python InnerCrossVal.py ACES outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 lioness \
+          outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness/fold0 -k 5 -m 1000 
+
+        $ python InnerCrossVal.py ACES outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 lioness \
+          outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness/fold0 -k 5 -m 1000 \
+          -sfan  ../../sfan/code 
 
     Files created
     -------------
@@ -288,6 +689,8 @@ def main():
                         type=int)
     parser.add_argument("-n", "--nodes", action='store_true', default=False,
                         help="Work with node weights rather than edge weights")
+    parser.add_argument("-s", "--sfan",
+                        help='Path to sfan code (then automatically use sfan + l2 logistic regression)')
     args = parser.parse_args()
 
     try:

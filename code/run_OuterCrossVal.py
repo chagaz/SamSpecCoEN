@@ -27,8 +27,14 @@ def main():
     
     Example
     -------
-        $ python run_OuterCrossVal.py ACES//experiments/data/ outputs/U133A_combat_RFS/subtype_stratified/repeat0 lioness outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness -o 10 -k 5 -m 1000
+        $ python run_OuterCrossVal.py ACES/experiments/data/ \
+         outputs/U133A_combat_RFS/subtype_stratified/repeat0 lioness \
+         outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness -o 10 -k 5 -m 1000
 
+        $ python run_OuterCrossVal.py ACES/experiments/data/ \
+          outputs/U133A_combat_RFS/subtype_stratified/repeat0 lioness \
+          outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/sfan -o 10 -k 5 -m 1000 \
+          -s ../../sfan/code 
     
     Files created
     -------------
@@ -52,6 +58,8 @@ def main():
                         type=int)
     parser.add_argument("-n", "--nodes", action='store_true', default=False
                         help="Work with node weights rather than edge weights")    
+    parser.add_argument("-s", "--sfan",
+                        help='Path to sfan code (then automatically use sfan + l2 logistic regression)')
     args = parser.parse_args()
 
     try:
@@ -68,12 +76,25 @@ def main():
             num_samples += len(f.readlines())
             f.close()
 
-    # Initialize OuterCrossVal
-    ocv = OuterCrossVal(args.aces_data_path, args.network_data_path, args.network_type, num_samples,
-                        args.num_inner_folds, args.num_outer_folds, args.max_nr_feats, args.nodes)
-    
-    # Read outputs from inner cross-validation experiments
-    ocv.read_outer_l1_logreg(args.results_dir)
+    # Sfan 
+    if args.sfan:
+        # Initialize OuterCrossVal
+        ocv = OuterCrossVal(args.aces_data_path, args.network_data_path, args.network_type, num_samples,
+                            args.num_inner_folds, args.num_outer_folds, max_nr_feats=args.max_nr_feats,
+                            use_nodes=True, use_sfan=True, sfan_path=args.sfan)
+
+        # Read outputs from inner cross-validation experiments
+        ocv.read_outer_sfan(args.results_dir)
+
+    # Logistic l1-regression
+    else:
+        # Initialize OuterCrossVal
+        ocv = OuterCrossVal(args.aces_data_path, args.network_data_path, args.network_type, num_samples,
+                            args.num_inner_folds, args.num_outer_folds, max_nr_feats=args.max_nr_feats,
+                            use_nodes=args.nodes)
+
+        # Read outputs from inner cross-validation experiments
+        ocv.read_outer_l1_logreg(args.results_dir)
 
     # Open results file for writing
     res_fname = '%s/results.txt' % args.results_dir

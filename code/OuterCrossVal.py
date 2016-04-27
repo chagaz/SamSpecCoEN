@@ -52,6 +52,8 @@ class OuterCrossVal(object):
         Total number of features
     self.use_nodes: bool
         Whether to use node weights rather than edge weights as features.
+    self.sfan_path: path
+            Path to sfan code.        
 
     Reference
     ---------
@@ -60,7 +62,8 @@ class OuterCrossVal(object):
     classifiers in breast cancer prognosis. Front Genet 4.  
     """
     def __init__(self, aces_data_root, network_data_root, network_type, num_samples,
-                 nr_inner_folds, nr_outer_folds, max_nr_feats=400, use_nodes=False):
+                 nr_inner_folds, nr_outer_folds, max_nr_feats=400, use_nodes=False,
+                 use_sfan=False, sfan_path=None):
         """
         Parameters
         ----------
@@ -80,6 +83,10 @@ class OuterCrossVal(object):
         use_nodes: bool
             Whether to use node weights rather than edge weights as features.
            (This does not make use of the network information.)
+        use_sfan: bool
+            Whether to use sfan on {node weights + network structure} rather than edge weights.
+        sfan_path: path
+            Path to sfan code.
         """
         self.true_labels = np.ones((num_samples, ))
         self.pred_labels = np.ones((num_samples, ))
@@ -95,11 +102,12 @@ class OuterCrossVal(object):
         self.network_type = network_type
 
         self.use_nodes = use_nodes
+        self.use_sfan = use_sfan
+        if self.use_sfan:
+            self.use_nodes = True
 
         # Read the number of features
         if self.use_nodes:
-            self.num_features = np.loadtxt("%s/fold0/edges.gz" % self.data_root).shape[0]
-        else:
             # Read ACES data
             sys.path.append(aces_data_root)
             from datatypes.ExpressionDataset import HDF5GroupToExpressionDataset
@@ -107,6 +115,8 @@ class OuterCrossVal(object):
             aces_data = HDF5GroupToExpressionDataset(f['U133A_combat_RFS'], checkNormalise=False)
             self.num_features = aces_data.expressionData.shape[1]
             f.close()
+        else:
+            self.num_features = np.loadtxt("%s/fold0/edges.gz" % self.data_root).shape[0]
         
         
     def run_outer_l1_logreg(self):
@@ -189,7 +199,93 @@ class OuterCrossVal(object):
         # Convert probability estimates in labels
         self.pred_labels = np.array(self.pred_values > 0, dtype='int')
             
+        
 
+    def run_outer_sfan(self):
+        """ Run the outer loop of the experiment, for an l2-regularized logistic regression
+        with sfan.
+
+        Updated attributes
+        ------------------
+        true_labels: (num_samples, ) array
+            True labels for all samples.
+        pred_labels: (num_samples, ) array
+            Predicted labels for all samples, in the same order as true_labels.
+        pred_values: (num_samples, ) array
+            Probability estimates for all samples, in the same order as true_labels.
+        features_list: list of list
+            List of list of indices of the selected features.
+        """
+        for fold in range(self.nr_outer_folds):
+            sys.stdout.write("Working on fold number %d\n" % fold)
+
+            # Read the test indices
+            data_fold_root = '%s/fold%d' % (self.data_root, fold)
+            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
+            
+            # Create an InnerCrossVal
+            icv = InnerCrossVal.InnerCrossVal(self.aces_data_path, data_fold_root,
+                                              self.network_type, self.nr_inner_folds,
+                                              self.max_nr_feats, use_nodes=True,
+                                              use_sfan=True, sfan_path=self.sfan_path)
+                                              
+
+            # Get predictions and selected features for the inner loop
+            reg_params=[itertools.product([10.**k for k in range(-3, 3)],
+                                          [2.**k for k in range(-8, -2)]),
+                        [10.**k for k in range(-3, 3)]]
+            [pred_values_fold, features_fold] = icv.run_inner_sfan(reg_params=reg_params)
+
+            # Update self.true_labels, self.pred_labels, self.features_list
+            self.true_labels[te_indices] = icv.y_te
+            self.pred_values[te_indices] = pred_values_fold
+            self.features_list.append(features_fold)
+
+        # Convert probability estimates in labels
+        self.pred_labels = np.array(self.pred_values > 0, dtype='int')
+            
+
+    def read_outer_sfan(self, inner_cv_resdir):
+        """ Read the results of the outer loop of the experiment,
+        for an l2-regularized logistic regression with sfan.
+
+        Parameters
+        ----------
+        inner_cv_resdir: path
+            Path to outputs of InnerCrossVal for each fold
+
+        Updated attributes
+        ------------------
+        true_labels: (num_samples, ) array
+            True labels for all samples.
+        pred_labels: (num_samples, ) array
+            Predicted labels for all samples, in the same order as true_labels.
+        pred_values: (num_samples, ) array
+            Probability estimates for all samples, in the same order as true_labels.
+        features_list: list of list
+            List of list of indices of the selected features.
+        """
+        for fold in range(self.nr_outer_folds):
+            sys.stdout.write("Reading results for fold number %d\n" % fold)
+
+            # Read the test indices
+            data_fold_root = '%s/fold%d' % (self.data_root, fold)
+            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
+            
+            # Read results from InnerCrossVal
+            yte_fname = '%s/fold%d/yte' % (inner_cv_resdir, fold)
+            self.true_labels[te_indices] = np.loadtxt(yte_fname, dtype='int')
+
+            pred_values_fname = '%s/fold%d/predValues' % (inner_cv_resdir, fold)
+            self.pred_values[te_indices] = np.loadtxt(pred_values_fname)
+
+            features_list_fname = '%s/fold%d/featuresList' % (inner_cv_resdir, fold)
+            self.features_list.append(np.loadtxt(features_list_fname, dtype='int'))
+
+        # Convert probability estimates in labels
+        self.pred_labels = np.array(self.pred_values > 0, dtype='int')
+            
+        
     def compute_auc(self):
         """ Compute the AUC of the experiment.
 
