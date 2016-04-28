@@ -38,10 +38,14 @@ class InnerCrossVal(object):
     self.max_nr_feats: int
         Maximum number of features to return.
         Default value=400, as in [Staiger et al.]
+    self.num_features: int
+        Number of features.
 
     Optional attributes
     -------------------
     In case we want to use sfan (use_sfan=True):
+    self.num_edges: int
+        Number of edges.
     self.sfan_path: path
         Path to sfan code.
     self.node_weights_f: path
@@ -113,6 +117,9 @@ class InnerCrossVal(object):
             x_te_f = '%s/%s/edge_weights_te.gz' % (data_fold_root, network_type)
             self.x_te = np.loadtxt(x_te_f).transpose()
 
+        # Number of features
+        self.num_features = self.x_tr.shape[1]
+
         # Normalize data (according to training data)
         x_mean = np.mean(self.x_tr, axis=0)
         x_stdv = np.std(self.x_tr, axis=0, ddof=1)
@@ -129,15 +136,21 @@ class InnerCrossVal(object):
 
         # Compute extra files for the usage of sfan:
         if use_sfan:
+            print "Using sfan"
+            edges_f = '%s/edges.gz' % data_fold_root
+
+            # Number of edges
+            self.num_edges = np.loadtxt(edges_f).shape[0]
+
             # Node weights
             self.node_weights_f = '%s/scores.txt' % data_fold_root
             self.compute_node_weights()
 
             # Dimacs network and connected nodes
             self.ntwk_dimacs_f = '%s/network.dimacs' % data_fold_root
-            edges_f = '%s/edges.gz' % data_fold_root
             self.compute_dimacs(edges_f)
 
+            # Path to sfan
             self.sfan_path = sfan_path
             sys.path.append(self.sfan_path)
             import evaluation_framework as ef
@@ -155,10 +168,8 @@ class InnerCrossVal(object):
             File where to store node weights
             (computed based on correlation betwen self.x_tr and self.y_tr).        
         """
-        num_nodes = self.x_tr.shape[1]
-
         scores = [st.pearsonr(self.x_tr[:, node_idx], self.y_tr)[0]**2 \
-                  for node_idx in range(num_nodes)]
+                  for node_idx in range(self.num_features)]
 
         np.savetxt(self.node_weights_f, scores, fmt='%.3e')
         
@@ -181,10 +192,12 @@ class InnerCrossVal(object):
         self.ntwk_dimacs_f: path
             Dimacs version of edges.gz
 
-        Modified attribute
-        ------------------
+        Modified attributes
+        -------------------
         self.connected_nodes_map: dict
             Map node IDs in dimacs file to node indices in self.x_tr.
+        self.x_tr, self.x_te:
+            Restricted to the nodes that appear in the network.
         """
         sym_edges_dict = {} #j:[i]
         last_idx = 0
@@ -197,7 +210,7 @@ class InnerCrossVal(object):
         connected_nodes = set([]) 
 
         with open(tmp_fname, 'w') as g:
-            g.write("p max %d %d\n" % (num_genes, num_edges*2))
+            g.write("p max %d %d\n" % (self.num_features, self.num_edges*2))
             with gzip.open(edges_f, 'r') as f:     
                 for line in f:
                     idx_1, idx_2 = [int(x) for x in line.split()]
@@ -232,8 +245,8 @@ class InnerCrossVal(object):
         # Restrict data to nodes that belong to the network:
         connected_nodes = list(connected_nodes)
         connected_nodes.sort()
-        Ztr_norm_sfan = Ztr_norm[:, connected_nodes]
-        Zte_norm_sfan = Zte_norm[:, connected_nodes]
+        self.x_tr = self.x_tr[:, connected_nodes]
+        self.x_te = self.x_te[:, connected_nodes]
 
         num_genes_in_ntwk = len(connected_nodes)
         print "%d nodes in the network." % num_genes_in_ntwk
@@ -247,8 +260,8 @@ class InnerCrossVal(object):
             self.connected_nodes_map[(new_idx + 1)] = old_idx
             
         # Update node IDs in ntwk_dimacs
-        with open(ntwk_dimacs_f, 'w') as g:
-            g.write("p max %d %d\n" % (num_genes_in_ntwk, num_edges*2))
+        with open(self.ntwk_dimacs_f, 'w') as g:
+            g.write("p max %d %d\n" % (num_genes_in_ntwk, self.num_edges*2))
             with open(tmp_fname, 'r') as f:
                 f.readline() # header
                 for line in f:
@@ -663,8 +676,8 @@ def main():
           outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness/fold0 -k 5 -m 1000 
 
         $ python InnerCrossVal.py ACES outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 lioness \
-          outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness/fold0 -k 5 -m 1000 \
-          -sfan  ../../sfan/code 
+          outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/sfan/fold0 -k 5 -m 1000 \
+          --sfan  ../../sfan/code 
 
     Files created
     -------------
@@ -700,9 +713,16 @@ def main():
         sys.stderr.write("Aborting.\n")
         sys.exit(-1)
 
+    # To sfan or not to sfan?
+    use_sfan = False
+    if args.sfan:
+        use_sfan = True
+        
     # Initialize InnerCrossVal
     icv = InnerCrossVal(args.aces_data_path, args.network_data_path, args.network_type, 
-                        args.num_inner_folds, args.max_nr_feats, args.nodes)
+                        args.num_inner_folds, 
+                        max_nr_feats=args.max_nr_feats, 
+                        use_nodes=args.nodes, use_sfan=use_sfan, sfan_path=args.sfan)
 
     # Create results dir if it does not exist
     if not os.path.isdir(args.results_dir):
