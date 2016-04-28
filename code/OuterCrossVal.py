@@ -116,7 +116,7 @@ class OuterCrossVal(object):
             self.num_features = aces_data.expressionData.shape[1]
             f.close()
         else:
-            self.num_features = np.loadtxt("%s/fold0/edges.gz" % self.data_root).shape[0]
+            self.num_features = np.loadtxt("%s/fold0/edges.gz" % self.network_data_root).shape[0]
         
         
     def run_outer_l1_logreg(self):
@@ -137,7 +137,7 @@ class OuterCrossVal(object):
             sys.stdout.write("Working on fold number %d\n" % fold)
 
             # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.data_root, fold)
+            data_fold_root = '%s/fold%d' % (self.network_data_root, fold)
             te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
             
             # Create an InnerCrossVal
@@ -159,7 +159,7 @@ class OuterCrossVal(object):
         self.pred_labels = np.array(self.pred_values > 0, dtype='int')
             
 
-    def read_outer_l1_logreg(self, innerCV_resdir):
+    def read_outer_l1_logreg(self, inner_cv_resdir):
         """ Read the results of the outer loop of the experiment,
         for an l1-regularized logistic regression.
 
@@ -183,7 +183,7 @@ class OuterCrossVal(object):
             sys.stdout.write("Reading results for fold number %d\n" % fold)
 
             # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.data_root, fold)
+            data_fold_root = '%s/fold%d' % (self.network_data_root, fold)
             te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
             
             # Read results from InnerCrossVal
@@ -390,7 +390,7 @@ def main():
                         type=int)
     parser.add_argument("-m", "--max_nr_feats", help="Maximum number of selected features",
                         type=int)
-    parser.add_argument("-n", "--nodes", action='store_true', default=False
+    parser.add_argument("-n", "--nodes", action='store_true', default=False,
                         help="Work with node weights rather than edge weights")
     args = parser.parse_args()
 

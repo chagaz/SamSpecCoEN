@@ -56,8 +56,8 @@ def main():
                         type=int)
     parser.add_argument("-m", "--max_nr_feats", help="Maximum number of selected features",
                         type=int)
-    parser.add_argument("-n", "--nodes", action='store_true', default=False
-                        help="Work with node weights rather than edge weights")    
+    parser.add_argument("-n", "--nodes", action='store_true', default=False,
+                        help="Work with node weights rather than edge weights")
     parser.add_argument("-s", "--sfan",
                         help='Path to sfan code (then automatically use sfan + l2 logistic regression)')
     args = parser.parse_args()
@@ -72,16 +72,19 @@ def main():
     # Get the total number of samples
     num_samples = 0
     for fold_nr in range(args.num_outer_folds):
-        with open('%s/fold%d/test.indices' % (args.data_path, fold_nr)) as f:
+        with open('%s/fold%d/test.indices' % (args.network_data_path, fold_nr)) as f:
             num_samples += len(f.readlines())
             f.close()
+    print "%d samples" % num_samples
 
     # Sfan 
     if args.sfan:
         # Initialize OuterCrossVal
-        ocv = OuterCrossVal(args.aces_data_path, args.network_data_path, args.network_type, num_samples,
-                            args.num_inner_folds, args.num_outer_folds, max_nr_feats=args.max_nr_feats,
-                            use_nodes=True, use_sfan=True, sfan_path=args.sfan)
+        ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.network_data_path, 
+                                          args.network_type, num_samples,
+                                          args.num_inner_folds, args.num_outer_folds, 
+                                          max_nr_feats=args.max_nr_feats,
+                                          use_nodes=True, use_sfan=True, sfan_path=args.sfan)
 
         # Read outputs from inner cross-validation experiments
         ocv.read_outer_sfan(args.results_dir)
@@ -89,9 +92,11 @@ def main():
     # Logistic l1-regression
     else:
         # Initialize OuterCrossVal
-        ocv = OuterCrossVal(args.aces_data_path, args.network_data_path, args.network_type, num_samples,
-                            args.num_inner_folds, args.num_outer_folds, max_nr_feats=args.max_nr_feats,
-                            use_nodes=args.nodes)
+        ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.network_data_path, 
+                                          args.network_type, num_samples,
+                                          args.num_inner_folds, args.num_outer_folds, 
+                                          max_nr_feats=args.max_nr_feats,
+                                          use_nodes=args.nodes)
 
         # Read outputs from inner cross-validation experiments
         ocv.read_outer_l1_logreg(args.results_dir)
