@@ -122,7 +122,13 @@ done
 The ```--nodes``` option allows you to run the exact same algorithm on the exact same folds, but using the node weights (i.e. gene expression data) directly instead of the edge weights, for comparison purposes (the network type is required but won't be used):
 
 ```
-        python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness ${data_dir}/repeat${repeat}/results -o 10 -k 5 -m 1000 --nodes
+    python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness ${data_dir}/repeat${repeat}/results -o 10 -k 5 -m 1000 --nodes
+```
+
+The ```--sfan``` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan).
+
+```
+    python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness ${data_dir}/repeat${repeat}/results/sfan -o 10 -k 5 -m 1000 --nodes --sfan ${sfan_dir}
 ```
 
 #### Parallelization at the repeat/fold level
@@ -160,13 +166,23 @@ The ```--nodes``` option allows you to run the exact same algorithm on the exact
 ```
         python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} lioness ${data_dir}/repeat${repeat}/results/fold${fold} -k 5 -m 1000 --nodes
         
-        python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness ${data_dir}/repeat${repeat}/results/ -o 10 -k 5 -m 1000        
-```            
+        python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness ${data_dir}/repeat${repeat}/results -o 10 -k 5 -m 1000 --nodes
+```           
+
+The ```--sfan``` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan).
+
+```
+        python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} lioness ${data_dir}/repeat${repeat}/results/sfan/fold${fold} -k 5 -m 1000 --nodes --sfan ${sfan_dir}
+        
+        python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness ${data_dir}/repeat${repeat}/results/sfan -o 10 -k 5 -m 1000  --sfan ${sfan_dir}     
+```  
 
 
 References
 ==========
 Allahyar, A. and de Ridder, J. (2015). FERAL: network-based classifier with application to breast cancer outcome prediction. Bioinformatics, 31 (12).
+
+Azencott, C.-A., Grimm, D., Sugiyama, M., Kawahara, Y., and Borgwardt, K. M. (2013). Efficient network-guided multi-locus association mapping with graph cuts. Bioinformatics, 29(13): i171—i179.
 
 Kuijjer, M.L., Tung, M., Yuan, G., Quackenbush, J., and Glass, K. (2015). Estimating sample-specific regulatory networks. arXiv:1505.06440 [q-Bio].  
  
