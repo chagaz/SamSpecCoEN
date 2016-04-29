@@ -31,8 +31,9 @@ def plot_numf(results_dir, figure_path, num_repeats=10):
         Number of repeated experiments.        
     """
     numf_dict = {'nodes_l1logreg': [],
-             'lioness_l1logreg': [],
-              'regline_l1logreg': []}#, 'sfan_l2logreg': []
+                 'lioness_l1logreg': [],
+                 'regline_l1logreg': [],
+                 'sfan_l2logreg': []}
 
     # read number of selected features
     for repeat_idx in range(num_repeats):
@@ -60,9 +61,20 @@ def plot_numf(results_dir, figure_path, num_repeats=10):
                 f.close()
             numf_dict['%s_l1logreg' % ntwk].extend(numf_list)
 
+        # L2-logreg on sfan-selected features
+        with open('%s/sfan/results.txt' % repeat_dir, 'r') as f:
+            for line in f:
+                ls = line.split('\t')
+                if ls[0] == "Number of features selected per fold:":
+                    numf_list = [int(x) for x in ls[1].split()]
+                    break
+            f.close()
+            numf_dict['sfan_l2logreg'].extend(numf_list)
+            
     numf_data = np.array([numf_dict['nodes_l1logreg'],
                           numf_dict['lioness_l1logreg'],
-                          numf_dict['regline_l1logreg']])
+                          numf_dict['regline_l1logreg'],
+                          numf_dict['sfan_l2logreg']])
     numf_data = np.transpose(numf_data)
 
     # Plot
@@ -76,8 +88,8 @@ def plot_numf(results_dir, figure_path, num_repeats=10):
 
     plt.title('Cross-validated L1-logistic regression over %d repeats' % num_repeats)
     plt.ylabel('Number of features')
-    labels = ('Nodes', 'Edges (Lioness)', 'Edges (Regline)')
-    plt.xticks(range(1, 4), labels)#, rotation=35)    
+    labels = ('Nodes', 'Edges (Lioness)', 'Edges (Regline)', 'Sfan')
+    plt.xticks(range(1, 5), labels)#, rotation=35)    
 
     plt.savefig(figure_path, bbox_inches='tight')
     print "Saved number of features to %s" % figure_path
@@ -100,7 +112,8 @@ def plot_cixs(results_dir, figure_path, num_repeats=10):
     # Read consistency indices
     cix_dict = {'nodes_l1logreg': [],
                 'lioness_l1logreg': [],
-                'regline_l1logreg': []}#, 'sfan_l2logreg': []
+                'regline_l1logreg': [],
+                'sfan_l2logreg': []}
 
     for repeat_idx in range(num_repeats):
         repeat_dir = '%s/repeat%d/results' % (results_dir, repeat_idx)
@@ -128,9 +141,21 @@ def plot_cixs(results_dir, figure_path, num_repeats=10):
                 f.close()
             cix_dict['%s_l1logreg' % ntwk].extend(cix_list)    
 
+        # L2-logreg on sfan-selected features
+        with open('%s/sfan/results.txt' % repeat_dir, 'r') as f:
+            for line in f:
+                ls = line.split('\t')
+                if ls[0] == "Stability (Consistency Index):":
+                    cix_list = [float(string.lstrip(string.rstrip(x, ",']\n"), ",' [")) \
+                                for x in ls[-1].split(",")]
+                    break
+            f.close()
+            cix_dict['sfan_l2logreg'].extend(cix_list)
+
     cix_data = np.array([cix_dict['nodes_l1logreg'],
                          cix_dict['lioness_l1logreg'],
-                         cix_dict['regline_l1logreg']])
+                         cix_dict['regline_l1logreg'],
+                         cix_dict['sfan_l2logreg']])
     cix_data = np.transpose(cix_data)
 
     # Plot
@@ -144,8 +169,8 @@ def plot_cixs(results_dir, figure_path, num_repeats=10):
 
     plt.title('Cross-validated L1-logistic regression over %d repeats' % num_repeats)
     plt.ylabel('Consistency Index')
-    labels = ('Nodes', 'Edges (Lioness)', 'Edges (Regline)')
-    plt.xticks(range(1, 4), labels)#, rotation=35)
+    labels = ('Nodes', 'Edges (Lioness)', 'Edges (Regline)', 'Sfan')
+    plt.xticks(range(1, 5), labels)#, rotation=35)    
     plt.ylim(0., 1.)
             
     plt.savefig(figure_path, bbox_inches='tight')
@@ -168,7 +193,8 @@ def plot_fovs(results_dir, figure_path, num_repeats=10):
     """
     fov_dict = {'nodes_l1logreg': [],
                 'lioness_l1logreg': [],
-                'regline_l1logreg': []}#, 'sfan_l2logreg': []
+                'regline_l1logreg': [],
+                'sfan_l2logreg': []}
 
     # read consistency indices
     for repeat_idx in range(num_repeats):
@@ -197,9 +223,21 @@ def plot_fovs(results_dir, figure_path, num_repeats=10):
                 f.close()
             fov_dict['%s_l1logreg' % ntwk].extend(fov_list)    
     
+        # L2-logreg on sfan-selected features
+        with open('%s/sfan/results.txt' % repeat_dir, 'r') as f:
+            for line in f:
+                ls = line.split('\t')
+                if ls[0] == "Stability (Fisher overlap):":
+                    fov_list = [float(string.lstrip(string.rstrip(x, ",']\n"), ",' [")) \
+                                for x in ls[-1].split(",")]
+                    break
+            f.close()
+            fov_dict['sfan_l2logreg'].extend(fov_list)
+
     fov_data = np.array([fov_dict['nodes_l1logreg'],
                          fov_dict['lioness_l1logreg'],
-                         fov_dict['regline_l1logreg']])
+                         fov_dict['regline_l1logreg'],
+                         fov_dict['sfan_l2logreg']])
     fov_data = np.transpose(fov_data)
 
     # Plot
@@ -213,8 +251,8 @@ def plot_fovs(results_dir, figure_path, num_repeats=10):
 
     plt.title('Cross-validated L1-logistic regression over %d repeats' % num_repeats)
     plt.ylabel('Fisher Overlap')
-    labels = ('Nodes', 'Edges (Lioness)', 'Edges (Regline)')
-    plt.xticks(range(1, 4), labels)#, rotation=35)
+    labels = ('Nodes', 'Edges (Lioness)', 'Edges (Regline)', 'Sfan')
+    plt.xticks(range(1, 5), labels)#, rotation=35)    
 
     plt.savefig(figure_path, bbox_inches='tight')
     print "Saved Fisher overlaps to %s" % figure_path
@@ -238,7 +276,8 @@ def plot_aucs(results_dir, figure_path, num_repeats=10):
     # method:[list of repeated AUCs]
     aucs_dict = {'nodes_l1logreg': [],
                  'lioness_l1logreg': [],
-                 'regline_l1logreg': []}#, 'sfan_l2logreg': []
+                 'regline_l1logreg': [],
+                 'sfan_l2logreg': []}
 
     # read AUCs
     for repeat_idx in range(num_repeats):
@@ -265,22 +304,23 @@ def plot_aucs(results_dir, figure_path, num_repeats=10):
                 f.close()
             aucs_dict['%s_l1logreg' % ntwk].append(auc)
 
-        # # L2-logreg on sfan-selected features
-        # with open('%s/sfan/results.txt' % repeat_dir, 'r') as f:
-        #     for line in f:
-        #         ls = line.split()
-        #         if ls[0] == "AUC:":
-        #             auc = float(ls[1])
-        #             break
-        #     f.close()
-        # aucs_dict['sfan_l2logreg'].append(auc)
+        # L2-logreg on sfan-selected features
+        with open('%s/sfan/results.txt' % repeat_dir, 'r') as f:
+            for line in f:
+                ls = line.split()
+                if ls[0] == "AUC:":
+                    auc = float(ls[1])
+                    break
+            f.close()
+        aucs_dict['sfan_l2logreg'].append(auc)
 
 
     # Plot AUCs
     # auc_data has num_repeats rows, as many columns as methods
     auc_data = np.array([aucs_dict['nodes_l1logreg'],
                          aucs_dict['lioness_l1logreg'],
-                         aucs_dict['regline_l1logreg']])
+                         aucs_dict['regline_l1logreg'],
+                         aucs_dict['sfan_l2logreg']])
     auc_data = np.transpose(auc_data)
 
     plt.figure(figsize=(10, 5))
@@ -291,14 +331,14 @@ def plot_aucs(results_dir, figure_path, num_repeats=10):
     plt.setp(bp['fliers'], color=blue_color)
     plt.setp(bp['medians'], color=orange_color)
 
-    plt.plot(range(5), [0.74 for x in range(5)], 
+    plt.plot(range(6), [0.74 for x in range(6)], 
              ls='--', color='#666666')
     plt.text(0.75, 0.745, 'FERAL (paper)', color='#666666')
 
     plt.title('Cross-validated L1-logistic regression over %d repeats' % num_repeats)
     plt.ylabel('AUC')
-    labels = ('Nodes', 'Edges (Lioness)', 'Edges (Regline)')
-    plt.xticks(range(1, 4), labels)#, rotation=35)
+    labels = ('Nodes', 'Edges (Lioness)', 'Edges (Regline)', 'Sfan')
+    plt.xticks(range(1, 5), labels)#, rotation=35)    
     plt.ylim(0.63, 0.78)
 
     plt.savefig(figure_path, bbox_inches='tight')
