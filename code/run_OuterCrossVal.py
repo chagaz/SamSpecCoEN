@@ -60,6 +60,8 @@ def main():
                         help="Work with node weights rather than edge weights")
     parser.add_argument("-s", "--sfan",
                         help='Path to sfan code (then automatically use sfan + l2 logistic regression)')
+    parser.add_argument("-e", "--enet", action='store_true', default=False,
+                        help="Only run elastic net")
     args = parser.parse_args()
 
     try:
@@ -77,8 +79,8 @@ def main():
             f.close()
     print "%d samples" % num_samples
 
-    # Sfan 
     if args.sfan:
+        # ========= Sfan =========
         # Initialize OuterCrossVal
         ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.network_data_path, 
                                           args.network_type, num_samples,
@@ -89,7 +91,10 @@ def main():
         # Read outputs from inner cross-validation experiments
         ocv.read_outer_sfan(args.results_dir)
 
-    # Logistic l1-regression
+        # Write results
+        ocv.write_results(args.results_dir)
+        # ========= End sfan =========
+
     else:
         # Initialize OuterCrossVal
         ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.network_data_path, 
@@ -97,49 +102,26 @@ def main():
                                           args.num_inner_folds, args.num_outer_folds, 
                                           max_nr_feats=args.max_nr_feats,
                                           use_nodes=args.nodes)
+        
+        # ========= l1-regularized logistic regression =========\
+        if not args.enet:
+            # Read outputs from inner cross-validation experiments
+            ocv.read_outer_logreg(args.results_dir)
 
+            # Write results
+            ocv.write_results(args.results_dir)
+        # ========= End l1-regularized logistic regression =========
+
+        
+        # ========= l1/l2-regularized logistic regression =========
         # Read outputs from inner cross-validation experiments
-        ocv.read_outer_l1_logreg(args.results_dir)
+        ocv.read_outer_logreg(args.results_dir)
 
-    # Open results file for writing
-    res_fname = '%s/results.txt' % args.results_dir
-    with open(res_fname, 'w') as f:
-    
-        # Write number of selected features
-        f.write("Number of features selected per fold:\t")
-        f.write("%s\n" % " ".join(["%d" % len(x) for x in ocv.features_list]))
-    
-        # Write AUC
-        f.write("AUC:\t%.2f\n" % ocv.compute_auc())
+        # Write results
+        results_dir = 'args.results_dir/enet'
+        ocv.write_results(results_dir)
+        # ========= End l1/l2-regularized logistic regression =========
 
-        # Write the stability (Fisher overlap)
-        fov_list = ocv.compute_fisher_overlap()
-        f.write("Stability (Fisher overlap):\t")
-        f.write("%s\n" % ["%.2e" % x for x in fov_list])
-
-        # Write the stability (consistency index)
-        cix_list = ocv.compute_consistency()
-        f.write("Stability (Consistency Index):\t")
-        f.write("%s\n" % ["%.2e" % x for x in cix_list])
-
-        f.close()
-
-
-    # Plot the stability (Fisher overlap)
-    fov_fname = '%s/fov.pdf' % args.results_dir
-    plt.figure()
-    plt.boxplot(fov_list, 0, 'gD')
-    plt.title('Fisher overlap')
-    plt.ylabel('-log10(p-value)')
-    plt.savefig(fov_fname, bbox_inches='tight')
-
-    # Plot the stability (consistency index)
-    cix_fname = '%s/cix.pdf' % args.results_dir
-    plt.figure()
-    plt.boxplot(cix_list, 0, 'gD')
-    plt.title('Consistency Index')
-    plt.savefig(cix_fname, bbox_inches='tight')
-    
     
 
 if __name__ == "__main__":

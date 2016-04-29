@@ -274,6 +274,7 @@ class InnerCrossVal(object):
         os.remove(tmp_fname)        
         
 
+    # ================== sfan + L1-regularized logistic regression ==================
     def run_inner_sfan(self, reg_params=[itertools.product([10.**k for k in range(-3, 3)],
                                                            [2.**k for k in range(-8, -2)]),
                                          [10.**k for k in range(-3, 3)]]):
@@ -356,7 +357,6 @@ class InnerCrossVal(object):
         features_list_fname = '%s/featuresList' % resdir
         np.savetxt(features_list_fname, features_list, fmt='%d')            
         
-
         
     def cv_inner_sfan(self, reg_params=[itertools.product([10.**k for k in range(-3, 3)],
                                                           [2.**k for k in range(-8, -2)]),
@@ -503,15 +503,16 @@ class InnerCrossVal(object):
         print "\tNumber of selected features:\t", len(features)
 
         return pred_values, features
-                       
+    # ================== End sfan + L1-regularized logistic regression ==================
 
-    def run_inner_l1_logreg(self, resdir, reg_params=[10.**k for k in range(-3, 3)], ):
+        
+
+    # ================== L1-regularized logistic regression ==================
+    def run_inner_l1_logreg(self, reg_params=[10.**k for k in range(-3, 3)]):
         """ Run the inner loop, using an l1-regularized logistic regression.
         
         Parameters
         ----------
-        resdir: path
-            Path to dir where to save outputs
         reg_params: list
             Range of lambda values to try out.
             Default: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
@@ -539,7 +540,7 @@ class InnerCrossVal(object):
         return self.train_pred_inner_l1_logreg(best_reg_param)
 
         
-    def run_inner_l1_logreg_write(self, resdir, reg_params=[10.**k for k in range(-3, 3)], ):
+    def run_inner_l1_logreg_write(self, resdir, reg_params=[10.**k for k in range(-3, 3)]):
         """ Run the inner loop, using an l1-regularized logistic regression.
         Save outputs to files.
         
@@ -583,7 +584,6 @@ class InnerCrossVal(object):
         features_list_fname = '%s/featuresList' % resdir
         np.savetxt(features_list_fname, features_list, fmt='%d')            
         
-
         
     def cv_inner_l1_logreg(self, reg_params=[10.**k for k in range(-3, 3)]):
         """ Compute the inner cross-validation loop to determine the best regularization parameter
@@ -664,7 +664,209 @@ class InnerCrossVal(object):
         print "\tNumber of selected features:\t", len(features)
 
         return pred_values, features
+    # ================== End l1-regularized logistic regression ==================
         
+
+
+
+        
+
+
+    # ================== l1/l2-regularized logistic regression ==================
+    def run_inner_enet_logreg(self, reg_params=[[10.**k for k in range(-3, 3)],
+                                                [.5, .75, .95]]):
+        """ Run the inner loop, using an l1/l2-regularized logistic regression.
+        
+        Parameters
+        ----------
+        reg_params: list of list
+            Range of lambda and l1_ratio values to try out.
+            Default: [[0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+                      [0.5, 0.75., 0.95]]
+        
+        Returns
+        -------
+        pred_values: (num_test_samples, ) array
+            Probability estimates for test samples, in the same order as self.y_tr.
+        features: list
+            List of indices of the selected features.
+
+        Write files
+        -----------
+        yte:
+            Contains self.y_te
+        pred_values:
+            Contains predictions
+        featuresList:
+            Contains selected features
+        """
+        # Get the optimal value of the regularization parameter by inner cross-validation
+        best_reg_param = self.cv_inner_enet_logreg(reg_params)
+
+        # Get the predictions and selected features
+        return self.train_pred_inner_enet_logreg(best_reg_param)
+        
+
+    def run_inner_enet_logreg_write(self, resdir, reg_params=[[10.**k for k in range(-3, 3)],
+                                                              [.5, .75, .95]]):
+        """ Run the inner loop, using an l1/l2-regularized logistic regression.
+        Save outputs to files.
+        
+        Parameters
+        ----------
+        resdir: path
+            Path to dir where to save outputs
+        reg_params: list of list
+            Range of lambda and l1_ratio values to try out.
+            Default: [[0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+                      [0.5, 0.75., 0.95]]
+        
+        Returns
+        -------
+        pred_values: (num_test_samples, ) array
+            Probability estimates for test samples, in the same order as self.y_tr.
+        features: list
+            List of indices of the selected features.
+
+        Write files
+        -----------
+        yte:
+            Contains self.y_te
+        pred_values:
+            Contains predictions
+        featuresList:
+            Contains selected features
+        """
+        # Get the optimal value of the regularization parameter by inner cross-validation
+        best_reg_param = self.cv_inner_enet_logreg(reg_params)
+
+        # Get the predictions and selected features
+        [pred_values, features_list] = self.train_pred_inner_enet_logreg(best_reg_param)
+
+        # Save to files
+        yte_fname = '%s/yte' % resdir
+        np.savetxt(yte_fname, self.y_te, fmt='%d')
+        
+        pred_values_fname = '%s/predValues' % resdir
+        np.savetxt(pred_values_fname, pred_values)
+        
+        features_list_fname = '%s/featuresList' % resdir
+        np.savetxt(features_list_fname, features_list, fmt='%d')            
+        
+        
+    def cv_inner_enet_logreg(self, reg_params=[[10.**k for k in range(-3, 3)],
+                                                              [.5, .75, .95]]):
+        """ Compute the inner cross-validation loop to determine the best regularization parameter
+        for an l1-regularized logistic regression.
+        
+        Parameters
+        ----------
+        reg_params: list of list
+            Range of lambda and l1_ratio values to try out.
+            Default: [[0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+                      [0.5, 0.75., 0.95]]
+        
+        Returns
+        -------
+        best_reg_param: float
+            Optimal value of the regularization parameter.
+        """
+        # Compute cross-validation folds
+        cross_validator = skcv.StratifiedKFold(self.y_tr, self.nr_folds)
+
+        # Compute cross-validated AUCs for all parameters
+        auc_dict = {}
+        for lbd in reg_params[0]:
+            for l1_ratio in reg_params[1]:
+                alpha = lbd / l1_ratio
+
+                # Initialize ENet classifier
+                clf = skm.SGDClassifier(loss='log', penalty='elasticnet',
+                                        alpha=alpha, l1_ratio=l1_ratio)
+                y_true = []
+                y_pred = []
+                for tr, te in cross_validator:
+                    clf.fit(self.x_tr[tr, :], self.y_tr[tr])
+                    ytr_te_pred = clf.predict_proba(self.x_tr[te, :])
+                    ix = clf.classes_.tolist().index(1)
+                    y_pred.extend(ytr_te_pred[:, ix])
+                    y_true.extend(self.y_tr[te])            
+
+                auc = skm.roc_auc_score(y_true, y_pred)
+                # print "alpha", alpha, "\tl1_ratio", l1_ratio, "\tauc", auc
+                if not auc_dict.has_key(auc):
+                    auc_dict[auc] = []
+                auc_dict[auc].append([lbd, l1_ratio])
+
+        # Get best parameters
+        auc_values = auc_dict.keys()
+        auc_values.sort()
+        best_auc = auc_values[-1]
+        best_reg_param = auc_dict[best_auc][0]
+
+        # Quality of fit?
+        clf = skm.SGDClassifier(loss='log', penalty='elasticnet',
+                                alpha=(best_reg_param[0]/best_reg_param[1]),
+                                l1_ratio=best_reg_param[1])
+        y_tr_pred = clf.predict_proba(self.x_tr)
+        y_tr_pred = y_tr_pred[:, clf.classes_.tolist().index(1)]
+        print "\tTraining AUC:\t", skm.roc_auc_score(self.y_tr, y_tr_pred)
+
+        # Get optimal value of the regularization parameter.
+        # If there are multiple equivalent values, return the first one.
+        print "\tall top params:\t", auc_dict[best_auc]
+        print "\tbest params:\t", best_reg_param
+        return best_reg_param
+
+        
+    def train_pred_inner_enet_logreg(self, best_reg_param):
+        """ Train an l1-regularized logistic regression (with optimal parameter)
+        on the train set, predict on the test set.
+        
+        Parameters
+        ----------
+        best_reg_param: float
+            Optimal value of the regularization parameters.
+            [best_lambda, best_l1_ratio]
+
+        Returns
+        -------
+        pred_values: (num_test_samples, ) array
+            Probability estimates for test samples, in the same order as trueLabels.
+        features: list
+            List of indices of the selected features.
+        """
+        # Initialize logistic regression classifier
+        classif = skm.SGDClassifier(loss='log', penalty='elasticnet',
+                                    alpha=(best_reg_param[0]/best_reg_param[1]),
+                                    l1_ratio=best_reg_param[1])
+        
+        # Train on the training set
+        classif.fit(self.x_tr, self.y_tr)
+
+        # Predict on the test set
+        pred_values = classif.predict_proba(self.x_te)
+
+        # Only get the probability estimates for the positive class
+        pred_values = pred_values[:, classif.classes_.tolist().index(1)]
+
+        # Quality of fit
+        print "\tTest AUC:\t", skm.roc_auc_score(self.y_te, pred_values)
+
+        # Get selected features
+        # If there are less than self.max_nr_feats, these are the non-zero coefficients
+        features = np.where(classif.coef_[0])[0]
+        if len(features) > self.max_nr_feats:
+            # Prune the coefficients with lowest values
+            features = np.argsort(classif.coef_[0])[-self.max_nr_feats:]
+
+        print "\tNumber of selected features:\t", len(features)
+
+        return pred_values, features
+    # ================== End l1/l2-regularized logistic regression ==================
+        
+
+
 
 def main():
     """ Run an inner cross-validation on sample-specific co-expression networks.
@@ -704,6 +906,8 @@ def main():
                         help="Work with node weights rather than edge weights")
     parser.add_argument("-s", "--sfan",
                         help='Path to sfan code (then automatically use sfan + l2 logistic regression)')
+    parser.add_argument("-e", "--enet", action='store_true', default=False,
+                        help="Only run elastic net")
     args = parser.parse_args()
 
     try:
@@ -733,10 +937,32 @@ def main():
             if not os.path.isdir(args.results_dir):
                 raise
 
-    # Run the inner cross-validation
-    icv.run_inner_l1_logreg_write(args.results_dir,
-                                  reg_params=[2.**k for k in range(-7, -1)])
+    # ========= l1 regularization =========
+    if not args.enet:
+        # Run the inner cross-validation for the l1 regularization
+        icv.run_inner_l1_logreg_write(args.results_dir,
+                                      reg_params=[2.**k for k in range(-7, -1)])
+    # ========= End l1 regularization =========
 
+
+    # ========= l1/l2 regularization =========
+    # Use a subdirectory called enet
+    results_dir = "%s/enet" % args.results_dir
+    # Create results dir if it does not exist
+    if not os.path.isdir(results_dir):
+        sys.stdout.write("Creating %s\n" % args.results_dir)
+        try: 
+            os.makedirs(results_dir)
+        except OSError:
+            if not os.path.isdir(results_dir):
+                raise
+
+    # Run the inner cross-validation for the l1/l2 regularization
+    lbd_values = []
+    l1_ratio_values = [0.5, 0.75, 0.95]
+    icv.run_inner_enet_logreg_write(results_dir,
+                                    reg_params=[lbd_values, l1_ratio_values])
+    # ========= End l1/l2 regularization =========
 
 
 if __name__ == "__main__":

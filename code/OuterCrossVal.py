@@ -119,6 +119,7 @@ class OuterCrossVal(object):
             self.num_features = np.loadtxt("%s/fold0/edges.gz" % self.network_data_root).shape[0]
         
         
+    # ================== l1-regularization ==================
     def run_outer_l1_logreg(self):
         """ Run the outer loop of the experiment, for an l1-regularized logistic regression.
 
@@ -157,11 +158,56 @@ class OuterCrossVal(object):
 
         # Convert probability estimates in labels
         self.pred_labels = np.array(self.pred_values > 0, dtype='int')
-            
+    # ================== End l1-regularization ==================
 
-    def read_outer_l1_logreg(self, inner_cv_resdir):
+
+    # ================== l1/l2-regularization ==================
+    def run_outer_enet_logreg(self):
+        """ Run the outer loop of the experiment, for an l1/l2-regularized logistic regression.
+
+        Updated attributes
+        ------------------
+        true_labels: (num_samples, ) array
+            True labels for all samples.
+        pred_labels: (num_samples, ) array
+            Predicted labels for all samples, in the same order as true_labels.
+        pred_values: (num_samples, ) array
+            Probability estimates for all samples, in the same order as true_labels.
+        features_list: list of list
+            List of list of indices of the selected features.
+        """
+        for fold in range(self.nr_outer_folds):
+            sys.stdout.write("Working on fold number %d\n" % fold)
+
+            # Read the test indices
+            data_fold_root = '%s/fold%d' % (self.network_data_root, fold)
+            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
+            
+            # Create an InnerCrossVal
+            icv = InnerCrossVal.InnerCrossVal(self.aces_data_path, data_fold_root,
+                                              self.network_type, self.nr_inner_folds,
+                                              self.max_nr_feats, self.use_nodes)
+                                              
+
+            # Get predictions and selected features for the inner loop
+            lbd_values = []
+            l1_ratio_values = [0.5, 0.75, 0.95]
+            reg_params=[lbd_values, l1_ratio_values]
+            [pred_values_fold, features_fold] = icv.run_inner_enet_logreg(reg_params=reg_params)
+
+            # Update self.true_labels, self.pred_labels, self.features_list
+            self.true_labels[te_indices] = icv.y_te
+            self.pred_values[te_indices] = pred_values_fold
+            self.features_list.append(features_fold)
+
+        # Convert probability estimates in labels
+        self.pred_labels = np.array(self.pred_values > 0, dtype='int')
+    # ================== End l1/l2-regularization ==================
+
+
+    def read_outer_logreg(self, inner_cv_resdir):
         """ Read the results of the outer loop of the experiment,
-        for an l1-regularized logistic regression.
+        for any logistic regression.
 
         Parameters
         ----------
@@ -198,9 +244,10 @@ class OuterCrossVal(object):
 
         # Convert probability estimates in labels
         self.pred_labels = np.array(self.pred_values > 0, dtype='int')
-            
-        
 
+        
+        
+    # ================== Sfan ==================
     def run_outer_sfan(self):
         """ Run the outer loop of the experiment, for an l2-regularized logistic regression
         with sfan.
@@ -284,6 +331,7 @@ class OuterCrossVal(object):
 
         # Convert probability estimates in labels
         self.pred_labels = np.array(self.pred_values > 0, dtype='int')
+    # ================== End sfan ==================
             
         
     def compute_auc(self):
@@ -362,7 +410,66 @@ class OuterCrossVal(object):
                     cix_list.append((observed - expected) / (maxposbl - expected))
         return cix_list
         
+    def write_results(self, results_dir):
+        """ Create results files.
 
+        Parameter
+        ---------
+        results_dir: path
+            Where to save results.
+
+        Created files
+        -------------
+        results.txt:
+            Number of selected features (per fold)
+            AUC
+            Fisher overlaps (per fold)
+            Consistency index (per fold).
+
+        fov.pdf:
+            Box plot of Fisher overlaps.
+
+        cix.pdf:
+            Box plot of consistencies.        
+        """
+
+        # Open results file for writing
+        res_fname = '%s/results.txt' % results_dir
+        with open(res_fname, 'w') as f:
+            # Write number of selected features
+            f.write("Number of features selected per fold:\t")
+            f.write("%s\n" % " ".join(["%d" % len(x) for x in ocv.features_list]))
+
+            # Write AUC
+            f.write("AUC:\t%.2f\n" % ocv.compute_auc())
+
+            # Write the stability (Fisher overlap)
+            fov_list = ocv.compute_fisher_overlap()
+            f.write("Stability (Fisher overlap):\t")
+            f.write("%s\n" % ["%.2e" % x for x in fov_list])
+
+            # Write the stability (consistency index)
+            cix_list = ocv.compute_consistency()
+            f.write("Stability (Consistency Index):\t")
+            f.write("%s\n" % ["%.2e" % x for x in cix_list])
+            f.close()
+
+        # Plot the stability (Fisher overlap)
+        fov_fname = '%s/fov.pdf' % results_dir
+        plt.figure()
+        plt.boxplot(fov_list, 0, 'gD')
+        plt.title('Fisher overlap')
+        plt.ylabel('-log10(p-value)')
+        plt.savefig(fov_fname, bbox_inches='tight')
+
+        # Plot the stability (consistency index)
+        cix_fname = '%s/cix.pdf' % results_dir
+        plt.figure()
+        plt.boxplot(cix_list, 0, 'gD')
+        plt.title('Consistency Index')
+        plt.savefig(cix_fname, bbox_inches='tight')
+
+        
 def main():
     """ Run a cross-validation experiment on sample-specific co-expression networks.
 
@@ -392,6 +499,10 @@ def main():
                         type=int)
     parser.add_argument("-n", "--nodes", action='store_true', default=False,
                         help="Work with node weights rather than edge weights")
+    parser.add_argument("-e", "--enet", action='store_true', default=False,
+                        help="Only run elastic net")
+    parser.add_argument("-s", "--sfan",
+                        help='Path to sfan code (then automatically use sfan + l2 logistic regression)')
     args = parser.parse_args()
 
     try:
@@ -408,63 +519,81 @@ def main():
             num_samples += len(f.readlines())
             f.close()
 
-    # Initialize OuterCrossVal
-    ocv = OuterCrossVal(args.aces_data_path, args.network_data_path, args.network_type, num_samples,
-                        args.num_inner_folds, args.num_outer_folds, args.max_nr_feats, args.nodes)
-    # Run the experiment
-    ocv.run_outer_l1_logreg()
 
-    # Create results dir if it does not exist
-    if not os.path.isdir(args.results_dir):
-        sys.stdout.write("Creating %s\n" % args.results_dir)
-        try: 
-            os.makedirs(args.results_dir)
-        except OSError:
+    if args.sfan:
+        # ========= Sfan =========
+        # Initialize OuterCrossVal
+        ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.network_data_path, 
+                                          args.network_type, num_samples,
+                                          args.num_inner_folds, args.num_outer_folds, 
+                                          max_nr_feats=args.max_nr_feats,
+                                          use_nodes=True, use_sfan=True, sfan_path=args.sfan)
+
+        # Run the experiment
+        ocv.run_outer_sfan(args.results_dir)
+
+        # Create results dir if it does not exist
+        if not os.path.isdir(args.results_dir):
+            sys.stdout.write("Creating %s\n" % args.results_dir)
+            try: 
+                os.makedirs(args.results_dir)
+            except OSError:
+                if not os.path.isdir(args.results_dir):
+                    raise
+
+        print "Number of features:\t", [len(x) for x in ocv.features_list]
+        print "AUC:\t", ocv.compute_auc()
+
+        # Write results
+        ocv.write_results(args.results_dir)
+        # ========= End sfan =========
+
+    else:
+        # Initialize OuterCrossVal
+        ocv = OuterCrossVal(args.aces_data_path, args.network_data_path, args.network_type, num_samples,
+                            args.num_inner_folds, args.num_outer_folds, args.max_nr_feats, args.nodes)
+
+        # ========= l1 regularization =========
+        if not args.enet:
+            # Run the experiment
+            ocv.run_outer_l1_logreg()
+
+            # Create results dir if it does not exist
             if not os.path.isdir(args.results_dir):
-                raise
+                sys.stdout.write("Creating %s\n" % args.results_dir)
+                try: 
+                    os.makedirs(args.results_dir)
+                except OSError:
+                    if not os.path.isdir(args.results_dir):
+                        raise
+
+            print "Number of features:\t", [len(x) for x in ocv.features_list]
+            print "AUC:\t", ocv.compute_auc()
+
+            ocv.write_results(args.results_dir)
+        # ========= End l1 regularization =========
 
 
-    print "Number of features:\t", [len(x) for x in ocv.features_list]
-    print "AUC:\t", ocv.compute_auc()
+        # ========= l1/l2 regularization =========
+        # Run the experiment
+        ocv.run_outer_enet_logreg()
 
-    # Open results file
-    res_fname = '%s/results.txt' % args.results_dir
-    with open(res_fname, 'w') as f:
-    
-        # Write number of selected features
-        f.write("Number of features selected per fold:\t")
-        f.write("%s\n" % " ".join(["%d" % len(x) for x in ocv.features_list]))
-    
-        # Write AUC
-        f.write("AUC:\t%.2f\n" % ocv.compute_auc())
+        # Create results dir if it does not exist
+        results_dir = '%s/enet' % args.results_dir
+        if not os.path.isdir(results_dir):
+            sys.stdout.write("Creating %s\n" % results_dir)
+            try: 
+                os.makedirs(results_dir)
+            except OSError:
+                if not os.path.isdir(results_dir):
+                    raise
 
-        # Write the stability (Fisher overlap)
-        fov_list = ocv.compute_fisher_overlap()
-        f.write("Stability (Fisher overlap):\t")
-        f.write("%s\n" % ["%.2e" % x for x in fov_list])
+        print "Number of features:\t", [len(x) for x in ocv.features_list]
+        print "AUC:\t", ocv.compute_auc()
 
-        # Write the stability (consistency index)
-        cix_list = ocv.compute_consistency()
-        f.write("Stability (Consistency Index):\t")
-        f.write("%s\n" % ["%.2e" % x for x in cix_list])
+        ocv.write_results(results_dir)
+        # ========= End l1/l2 regularization =========
 
-        f.close()
-
-
-    # Plot the stability (Fisher overlap)
-    fov_fname = '%s/fov.pdf' % args.results_dir
-    plt.figure()
-    plt.boxplot(fov_list, 0, 'gD')
-    plt.title('Fisher overlap')
-    plt.ylabel('-log10(p-value)')
-    plt.savefig(fov_fname, bbox_inches='tight')
-
-    # Plot the stability (consistency index)
-    cix_fname = '%s/cix.pdf' % args.results_dir
-    plt.figure()
-    plt.boxplot(cix_list, 0, 'gD')
-    plt.title('Consistency Index')
-    plt.savefig(cix_fname, bbox_inches='tight')
     
     
 
