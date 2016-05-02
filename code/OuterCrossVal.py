@@ -286,6 +286,49 @@ class OuterCrossVal(object):
         # Convert probability estimates in labels
         self.pred_labels = np.array(self.pred_values > 0, dtype='int')
 
+
+    def read_inner_results_subdir(self, inner_cv_resdir, subdir_name):
+        """ Read the results of the inner loop of the experiment.
+
+        Parameters
+        ----------
+        inner_cv_resdir: path
+            Path to outputs of InnerCrossVal for each fold.
+        subdir_name: folder name
+            Name of the subdirectory of inner_cv_resdir/fold<fold_nr> 
+            in which to find results.
+
+        Updated attributes
+        ------------------
+        true_labels: (num_samples, ) array
+            True labels for all samples.
+        pred_labels: (num_samples, ) array
+            Predicted labels for all samples, in the same order as true_labels.
+        pred_values: (num_samples, ) array
+            Probability estimates for all samples, in the same order as true_labels.
+        features_list: list of list
+            List of list of indices of the selected features.
+        """
+        for fold in range(self.nr_outer_folds):
+            sys.stdout.write("Reading results for fold number %d\n" % fold)
+
+            # Read the test indices
+            data_fold_root = '%s/fold%d' % (self.network_data_root, fold)
+            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
+            
+            # Read results from InnerCrossVal
+            yte_fname = '%s/fold%d/%s/yte' % (inner_cv_resdir, fold, subdir_name)
+            self.true_labels[te_indices] = np.loadtxt(yte_fname, dtype='int')
+
+            pred_values_fname = '%s/fold%d/%s/predValues' % (inner_cv_resdir, fold, subdir_name)
+            self.pred_values[te_indices] = np.loadtxt(pred_values_fname)
+
+            features_list_fname = '%s/fold%d/%s/featuresList' % (inner_cv_resdir, fold, subdir_name)
+            self.features_list.append(np.loadtxt(features_list_fname, dtype='int'))
+
+        # Convert probability estimates in labels
+        self.pred_labels = np.array(self.pred_values > 0, dtype='int')
+
         
         
     # ================== Sfan ==================

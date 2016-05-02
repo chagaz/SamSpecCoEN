@@ -156,24 +156,6 @@ class InnerCrossVal(object):
             import evaluation_framework as ef
 
 
-    def compute_node_weights(self):
-        """ Compute node weights in the sfan framework.
-        
-        Each node is assigned the squared Pearson correlation of its corresponding feature
-        with the phenotype.
-
-        Modified file
-        -------------
-        self.node_weights_f: path
-            File where to store node weights
-            (computed based on correlation betwen self.x_tr and self.y_tr).        
-        """
-        scores = [st.pearsonr(self.x_tr[:, node_idx], self.y_tr)[0]**2 \
-                  for node_idx in range(self.num_features)]
-
-        np.savetxt(self.node_weights_f, scores, fmt='%.3e')
-        
-        
     def compute_dimacs(self, edges_f):
         """ Compute dimacs version of the network file edges.gz.
 
@@ -272,7 +254,26 @@ class InnerCrossVal(object):
 
         # Delete temporary file
         os.remove(tmp_fname)        
+
+
+    def compute_node_weights(self):
+        """ Compute node weights in the sfan framework.
         
+        Each node is assigned the squared Pearson correlation of its corresponding feature
+        with the phenotype.
+
+        Modified file
+        -------------
+        self.node_weights_f: path
+            File where to store node weights
+            (computed based on correlation betwen self.x_tr and self.y_tr).        
+        """
+        scores = [st.pearsonr(self.x_tr[:, node_idx], self.y_tr)[0]**2 \
+                  for node_idx in range(self.num_features)]
+
+        np.savetxt(self.node_weights_f, scores, fmt='%.3e')
+        
+                
 
     # ================== sfan + L1-regularized logistic regression ==================
     def run_inner_sfan(self, reg_params=[itertools.product([10.**k for k in range(-3, 3)],
@@ -358,9 +359,6 @@ class InnerCrossVal(object):
         features_list_fname = '%s/featuresList' % resdir
         np.savetxt(features_list_fname, features_list, fmt='%d')
 
-        # Baseline: l2-regularized logistic regression on the connected features only
-        
-        
         
     def cv_inner_sfan(self, reg_params=[itertools.product([10.**k for k in range(-3, 3)],
                                                           [2.**k for k in range(-8, -2)]),
@@ -439,7 +437,9 @@ class InnerCrossVal(object):
         p = subprocess.Popen(argum, stdout=subprocess.PIPE)
         p_out = p.communicate()[0].split("\n")[-2]
         # selected_features = [self.connected_nodes_map[int(x)] for x in p_out.split()]
-        selected_features = [int(x) for x in p_out.split()]
+        selected_features = [(int(x)-1) for x in p_out.split()]
+        print self.num_features, "features/nodes in network"
+        print np.max(selected_features), ": highest selected features"
 
         # Initialize logistic regression cross-validation classifier
         cv_clf = sklm.LogisticRegressionCV(Cs=reg_params[1], penalty='l2', solver='liblinear',
@@ -495,7 +495,7 @@ class InnerCrossVal(object):
         p = subprocess.Popen(argum, stdout=subprocess.PIPE)
         p_out = p.communicate()[0].split("\n")[-2]
         # features = [self.connected_nodes_map[int(x)] for x in p_out.split()]
-        features = [int(x) for x in p_out.split()]
+        features = [(int(x)-1) for x in p_out.split()]
         
         # Initialize l2-regularized logistic regression classifier
         classif = sklm.LogisticRegression(C=best_reg_param[2], penalty='l2',
@@ -748,10 +748,10 @@ class InnerCrossVal(object):
             Contains selected features
         """
         # Get the optimal value of the regularization parameter by inner cross-validation
-        best_reg_param = self.cv_inner_l1_logreg(reg_params)
+        best_reg_param = self.cv_inner_l2_logreg(reg_params)
 
         # Get the predictions and selected features
-        [pred_values, features_list] = self.train_pred_inner_l1_logreg(best_reg_param)
+        [pred_values, features_list] = self.train_pred_inner_l2_logreg(best_reg_param)
 
         # Save to files
         yte_fname = '%s/yte' % resdir
@@ -802,7 +802,7 @@ class InnerCrossVal(object):
 
         
     def train_pred_inner_l2_logreg(self, best_reg_param):
-        """ Train an l1-regularized logistic regression (with optimal parameter)
+        """ Train an l2-regularized logistic regression (with optimal parameter)
         on the train set, predict on the test set.
         
         Parameters
@@ -1142,8 +1142,8 @@ def main():
         # Use sfan to select features
         sfan_eta_values = [10**(k) for k in range(-5, -2)]
         sfan_lbd_values = [10**(k) for k in range(-5, -2)]
-        # sfan_eta_values = [10**(-2)]
-        # sfan_lbd_values = [10**(-2)]
+        # sfan_eta_values = [10**(-5)]
+        # sfan_lbd_values = [10**(-5)]
         
         icv.run_inner_sfan_write(args.results_dir,
                                  reg_params=[itertools.product(sfan_lbd_values,

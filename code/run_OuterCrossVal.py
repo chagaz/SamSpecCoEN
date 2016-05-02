@@ -89,11 +89,11 @@ def main():
                                           use_nodes=True, use_sfan=True, sfan_path=args.sfan)
         
         # Baseline using only connected features
-        results_dir = '%s/nosel' % args.results_dir
         # Read outputs from inner cross-validation experiments 
-        ocv.read_inner_results(results_dir)
+        ocv.read_inner_results_subdir(args.results_dir, 'nosel')
 
         # Write results
+        results_dir = '%s/nosel' % args.results_dir
         ocv.write_results(results_dir)
 
         #  Use sfan to select features
