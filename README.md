@@ -57,18 +57,20 @@ In order to evaluate the expressiveness of the representation of samples by thei
 
 To create the corresponding data folds and networks:
 ```
-    for repeat in {0..9}
-    do
-        python setupSubtypeStratifiedCV_writeIndices.py data/SamSpecCoEN ${repeat}
-    done
+data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified
+aces_dir=data/SamSpecCoEN/ACES # downloaded from http://ccb.nki.nl/software/aces/
+for repeat in {0..9}
+do
+    python setupSubtypeStratifiedCV_writeIndices.py data/SamSpecCoEN ${repeat}
+done
 
-    for repeat in {0..9}
+for repeat in {0..9}
+do
+    for fold in {0..9}
     do
-        for fold in {0..9}
-        do
-	    python setupCV_computeNetworks.py data/SamSpecCoEN/ACES data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified ${fold} ${repeat}
-        done
+	    python setupCV_computeNetworks.py ${aces_dir} ${data_dir} ${fold} ${repeat}
     done
+done
 ```
 This process can easily be parallelized.
 
@@ -79,18 +81,20 @@ We use a sampled leave-one-study-out cross-validation setting similar to that de
 
 To create the corresponding data folds and networks:
 ```
-    for repeat in {0..9}
-    do
-        python setupSampledLOSO_writeIndices.py data/SamSpecCoEN ${repeat}
-    done
+data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/sampled_loso
+aces_dir=data/SamSpecCoEN/ACES # downloaded from http://ccb.nki.nl/software/aces/
+for repeat in {0..9}
+do
+    python setupSampledLOSO_writeIndices.py data/SamSpecCoEN ${repeat}
+done
 
-    for repeat in {0..9}
+for repeat in {0..9}
+do
+    for fold in {0..9}
     do
-        for fold in {0..9}
-        do
-	    python setupCV_computeNetworks.py data/SamSpecCoEN/ACES data/SamSpecCoEN/outputs/U133A_combat_RFS/sampled_loso  ${fold} ${repeat}
-        done
+	   python setupCV_computeNetworks.py ${aces_dir} ${data_dir} ${fold} ${repeat}
     done
+ done
 ```
 This process can easily be parallelized.
 
@@ -100,8 +104,8 @@ Cross-validation experiments
 ----------------------------
 The class for running a cross-validation experiment is `OuterCrossVal.py`. Internally, it uses `InnerCrossVal.py` to determine the best hyperparameters for the learning algorithm.
 
-```python OuterCrossVal.py outputs/U133A_combat_DMFS lioness -o 5 -k 5 -m 400``` 
-runs a 5-fold cross-validation experiment on the data stored in folds under `outputs/U133A_combat_DMFS`, for the LIONESS edge weights, using a 5-fold inner cross-validation loop, and returning at most 400 genes (following ACES/FERAL), for (for now) an L1-regularized logistic regression.
+```python OuterCrossVal.py ACES outputs/U133A_combat_DMFS lioness results -o 5 -k 5 -m 400``` 
+runs a 5-fold cross-validation experiment on the data stored in folds under `outputs/U133A_combat_DMFS`, for the LIONESS edge weights, using a 5-fold inner cross-validation loop, and returning at most 400 genes (following ACES/FERAL). It uses both an l1-regularized logistic regression (results under the ```results/``` folder) and an l1/l2 (or Elastic Net)-regularized logistic regression  (results under the ```results/enet``` folder) .
 
 ### Subtype-stratified cross-validation 
 #### Parallelization at the repeat level
@@ -114,21 +118,25 @@ for repeat in {0..9}
 do
     for network in lioness regline
     do
-        python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} ${network} ${data_dir}/repeat${repeat}/results/${network} -o 10 -k 5 -m 1000
+        python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} ${network}  \ 
+               ${data_dir}/repeat${repeat}/results/${network} -o 10 -k 5 -m 1000
     done
 done
 ```
+This runs both an l1-regularized and an l1/l2-regularized (or ElasticNet) logistic regression. The ```--edges```
 
 The ```--nodes``` option allows you to run the exact same algorithm on the exact same folds, but using the node weights (i.e. gene expression data) directly instead of the edge weights, for comparison purposes (the network type is required but won't be used):
 
 ```
-    python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness ${data_dir}/repeat${repeat}/results -o 10 -k 5 -m 1000 --nodes
+python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness \ 
+       ${data_dir}/repeat${repeat}/results -o 10 -k 5 -m 1000 --nodes
 ```
 
 The ```--sfan``` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan).
 
 ```
-    python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness ${data_dir}/repeat${repeat}/results/sfan -o 10 -k 5 -m 1000 --nodes --sfan ${sfan_dir}
+python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness  \
+       ${data_dir}/repeat${repeat}/results/sfan -o 10 -k 5 -m 1000 --nodes --sfan ${sfan_dir}
 ```
 
 #### Parallelization at the repeat/fold level
@@ -142,7 +150,8 @@ do
     do
         for network in lioness regline
         do
-            python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} ${network} ${data_dir}/repeat${repeat}/results/${network}/fold${fold} -k 5 -m 1000
+            python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} ${network} \ 
+                   ${data_dir}/repeat${repeat}/results/${network}/fold${fold} -k 5 -m 1000
         done
     done
 done
@@ -156,7 +165,8 @@ for repeat in {0..9}
 do
     for network in lioness regline
     do
-        python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} ${network} ${data_dir}/repeat${repeat}/results/${network} -o 10 -k 5 -m 1000
+        python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} ${network} \ 
+               ${data_dir}/repeat${repeat}/results/${network} -o 10 -k 5 -m 1000
     done
 done
 ```
@@ -164,17 +174,21 @@ done
 The ```--nodes``` option allows you to run the exact same algorithm on the exact same folds, but using the node weights (i.e. gene expression data) directly instead of the edge weights, for comparison purposes (the network type is required but won't be used):
 
 ```
-        python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} lioness ${data_dir}/repeat${repeat}/results/fold${fold} -k 5 -m 1000 --nodes
-        
-        python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness ${data_dir}/repeat${repeat}/results -o 10 -k 5 -m 1000 --nodes
+python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} lioness \
+       ${data_dir}/repeat${repeat}/results/fold${fold} -k 5 -m 1000 --nodes
+  
+python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness \
+       ${data_dir}/repeat${repeat}/results -o 10 -k 5 -m 1000 --nodes
 ```           
 
 The ```--sfan``` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan).
 
 ```
-        python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} lioness ${data_dir}/repeat${repeat}/results/sfan/fold${fold} -k 5 -m 1000 --nodes --sfan ${sfan_dir}
-        
-        python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness ${data_dir}/repeat${repeat}/results/sfan -o 10 -k 5 -m 1000  --sfan ${sfan_dir}     
+python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} lioness \
+       ${data_dir}/repeat${repeat}/results/sfan/fold${fold} -k 5 -m 1000 --nodes --sfan ${sfan_dir}
+ 
+python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness \ 
+       ${data_dir}/repeat${repeat}/results/sfan -o 10 -k 5 -m 1000  --sfan ${sfan_dir}     
 ```  
 
 
