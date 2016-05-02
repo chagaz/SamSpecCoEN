@@ -87,9 +87,18 @@ def main():
                                           args.num_inner_folds, args.num_outer_folds, 
                                           max_nr_feats=args.max_nr_feats,
                                           use_nodes=True, use_sfan=True, sfan_path=args.sfan)
+        
+        # Baseline using only connected features
+        results_dir = '%s/nosel' % args.results_dir
+        # Read outputs from inner cross-validation experiments 
+        ocv.read_inner_results(results_dir)
 
+        # Write results
+        ocv.write_results(results_dir)
+
+        #  Use sfan to select features
         # Read outputs from inner cross-validation experiments
-        ocv.read_outer_sfan(args.results_dir)
+        ocv.read_inner_results(args.results_dir)
 
         # Write results
         ocv.write_results(args.results_dir)
@@ -106,7 +115,7 @@ def main():
         # ========= l1-regularized logistic regression =========\
         if not args.enet:
             # Read outputs from inner cross-validation experiments
-            ocv.read_outer_logreg(args.results_dir)
+            ocv.read_inner_results(args.results_dir)
 
             # Write results
             ocv.write_results(args.results_dir)
@@ -114,11 +123,11 @@ def main():
 
         
         # ========= l1/l2-regularized logistic regression =========
+        results_dir = 'args.results_dir/enet'
         # Read outputs from inner cross-validation experiments
-        ocv.read_outer_logreg(args.results_dir)
+        ocv.read_inner_results(results_dir)
 
         # Write results
-        results_dir = 'args.results_dir/enet'
         ocv.write_results(results_dir)
         # ========= End l1/l2-regularized logistic regression =========
 

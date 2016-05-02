@@ -5,7 +5,6 @@
 
 import argparse
 import gzip
-import h5py
 import itertools
 import numpy as np
 import os
@@ -96,6 +95,7 @@ class InnerCrossVal(object):
         if use_nodes or use_sfan:
             print "Using node weights as features"
             # Read ACES data
+            import h5py
             sys.path.append(aces_data_root)
             from datatypes.ExpressionDataset import HDF5GroupToExpressionDataset
             f = h5py.File("%s/experiments/data/U133A_combat.h5" % aces_data_root)
@@ -142,13 +142,13 @@ class InnerCrossVal(object):
             # Number of edges
             self.num_edges = np.loadtxt(edges_f).shape[0]
 
-            # Node weights
-            self.node_weights_f = '%s/scores.txt' % data_fold_root
-            self.compute_node_weights()
-
             # Dimacs network and connected nodes
             self.ntwk_dimacs_f = '%s/network.dimacs' % data_fold_root
             self.compute_dimacs(edges_f)
+
+            # Node weights
+            self.node_weights_f = '%s/scores.txt' % data_fold_root
+            self.compute_node_weights()
 
             # Path to sfan
             self.sfan_path = sfan_path
@@ -248,20 +248,20 @@ class InnerCrossVal(object):
         self.x_tr = self.x_tr[:, connected_nodes]
         self.x_te = self.x_te[:, connected_nodes]
 
-        num_genes_in_ntwk = len(connected_nodes)
-        print "%d nodes in the network." % num_genes_in_ntwk
+        self.num_features = len(connected_nodes)
+        print "%d nodes in the network." % self.num_features
 
         # Map node indices in temporary dimacs to node IDs in the final ones
         # and conversely
         map_idx = {}
         self.connected_nodes_map = {}
-        for (old_idx, new_idx) in zip(connected_nodes, range(num_genes_in_ntwk)):
+        for (old_idx, new_idx) in zip(connected_nodes, range(self.num_features)):
             map_idx[old_idx] = new_idx + 1 # indices start at 1 in dimacs file
             self.connected_nodes_map[(new_idx + 1)] = old_idx
             
         # Update node IDs in ntwk_dimacs
         with open(self.ntwk_dimacs_f, 'w') as g:
-            g.write("p max %d %d\n" % (num_genes_in_ntwk, self.num_edges*2))
+            g.write("p max %d %d\n" % (self.num_features, self.num_edges*2))
             with open(tmp_fname, 'r') as f:
                 f.readline() # header
                 for line in f:
@@ -306,9 +306,10 @@ class InnerCrossVal(object):
         return self.train_pred_inner_sfan(best_reg_param)     
 
         
-    def run_inner_sfan_write(self, resdir, reg_params=[itertools.product([10.**k for k in range(-3, 3)],
-                                                                         [2.**k for k in range(-8, -2)]),
-                                                       [10.**k for k in range(-3, 3)]]):
+    def run_inner_sfan_write(self, resdir, 
+                             reg_params=[itertools.product([10.**k for k in range(-3, 3)],
+                                                           [2.**k for k in range(-8, -2)]),
+                                         [10.**k for k in range(-3, 3)]]):
         """ Run the inner loop, using using sfan for feature selection,
         and a ridge-regression on the selected features for final prediction.
         Save outputs to files.
@@ -355,7 +356,10 @@ class InnerCrossVal(object):
         np.savetxt(pred_values_fname, pred_values)
         
         features_list_fname = '%s/featuresList' % resdir
-        np.savetxt(features_list_fname, features_list, fmt='%d')            
+        np.savetxt(features_list_fname, features_list, fmt='%d')
+
+        # Baseline: l2-regularized logistic regression on the connected features only
+        
         
         
     def cv_inner_sfan(self, reg_params=[itertools.product([10.**k for k in range(-3, 3)],
@@ -382,6 +386,8 @@ class InnerCrossVal(object):
             lambda_sfan, eta_sfan, C_ridge.
         """
         msfanpy = '%s/multitask_sfan.py' % self.sfan_path
+        sys.path.append(self.sfan_path)
+        import evaluation_framework as ef
         
         # Create cross-validation split of the training data
         cross_validator = skcv.StratifiedKFold(self.y_tr, self.nr_folds)
@@ -400,19 +406,21 @@ class InnerCrossVal(object):
         
         # Cross-validate parameters for feature selection
         best_reg_param = []
-        best_ci = -1.0
+        best_ci = -10.0
         for (lbd, eta) in reg_params[0]:
             sel_list = []
             for tmp_node_weights_f in tmp_node_weights_f_list:
                 argum = ['python', msfanpy, '--num_tasks', '1',
                          '--networks', self.ntwk_dimacs_f, 
                          '--node_weights', tmp_node_weights_f,
-                         '-l', lbd, '-e', eta, '-m', '0']
+                         '-l', ('%f' % lbd), '-e', ('%f' % eta), '-m', '0']
                 print "Running: ", " ".join(argum)
                 p = subprocess.Popen(argum, stdout=subprocess.PIPE)
-                p_out = p.communicate()[0].split("\n")[2]
+                pc = p.communicate()
+                p_out = pc[0].split("\n")[-2]
                 sel_list.append([int(x) for x in p_out.split()])
             ci = ef.consistency_index_k(sel_list, len(self.connected_nodes_map))
+            print lbd, eta, ci 
             if ci >= best_ci:
                 best_reg_param = [lbd, eta]
                 ci = best_ci
@@ -425,11 +433,13 @@ class InnerCrossVal(object):
         argum = ['python', msfanpy, '--num_tasks', '1',
                  '--networks', self.ntwk_dimacs_f, 
                  '--node_weights', self.node_weights_f,
-                 '-l', best_reg_param[0], '-e', best_reg_param[1], '-m', '0']
+                 '-l',  ('%f' % best_reg_param[0]),
+                 '-e',  ('%f' % best_reg_param[1]), '-m', '0']
         print "Running: ", " ".join(argum)
         p = subprocess.Popen(argum, stdout=subprocess.PIPE)
-        p_out = p.communicate()[0].split("\n")[2]
-        selected_features = [self.connected_nodes_map[int(x)] for x in p_out.split()]
+        p_out = p.communicate()[0].split("\n")[-2]
+        # selected_features = [self.connected_nodes_map[int(x)] for x in p_out.split()]
+        selected_features = [int(x) for x in p_out.split()]
 
         # Initialize logistic regression cross-validation classifier
         cv_clf = sklm.LogisticRegressionCV(Cs=reg_params[1], penalty='l2', solver='liblinear',
@@ -473,15 +483,19 @@ class InnerCrossVal(object):
         features: list
             List of indices of the selected features.
         """
+        msfanpy = '%s/multitask_sfan.py' % self.sfan_path
+
         # Run feature selection with sfan on whole training data, with optimal parameters
         argum = ['python', msfanpy, '--num_tasks', '1',
                  '--networks', self.ntwk_dimacs_f, 
                  '--node_weights', self.node_weights_f,
-                 '-l', best_reg_param[0], '-e', best_reg_param[1], '-m', '0']
+                 '-l',  ('%f' % best_reg_param[0]),
+                 '-e',  ('%f' % best_reg_param[1]), '-m', '0']
         print "Running: ", " ".join(argum)
         p = subprocess.Popen(argum, stdout=subprocess.PIPE)
-        p_out = p.communicate()[0].split("\n")[2]
-        features = [self.connected_nodes_map[int(x)] for x in p_out.split()]
+        p_out = p.communicate()[0].split("\n")[-2]
+        # features = [self.connected_nodes_map[int(x)] for x in p_out.split()]
+        features = [int(x) for x in p_out.split()]
         
         # Initialize l2-regularized logistic regression classifier
         classif = sklm.LogisticRegression(C=best_reg_param[2], penalty='l2',
@@ -506,6 +520,7 @@ class InnerCrossVal(object):
     # ================== End sfan + L1-regularized logistic regression ==================
 
         
+
 
     # ================== L1-regularized logistic regression ==================
     def run_inner_l1_logreg(self, reg_params=[10.**k for k in range(-3, 3)]):
@@ -601,11 +616,14 @@ class InnerCrossVal(object):
             Optimal value of the regularization parameter.
         """
         # Initialize logistic regression cross-validation classifier
+        print reg_params
         cv_clf = sklm.LogisticRegressionCV(Cs=reg_params, penalty='l1', solver='liblinear',
                                            cv=self.nr_folds,
                                            class_weight='balanced', scoring='roc_auc')
 
         # Fit to training data
+        print self.x_tr.shape
+        print self.y_tr.shape
         cv_clf.fit(self.x_tr, self.y_tr)
 
         # Quality of fit?
@@ -660,7 +678,7 @@ class InnerCrossVal(object):
         if len(features) > self.max_nr_feats:
             # Prune the coefficients with lowest values
             features = np.argsort(classif.coef_[0])[-self.max_nr_feats:]
-
+ 
         print "\tNumber of selected features:\t", len(features)
 
         return pred_values, features
@@ -668,6 +686,164 @@ class InnerCrossVal(object):
         
 
 
+    # ================== l2-regularized logistic regression ==================
+    def run_inner_l2_logreg(self, reg_params=[10.**k for k in range(-3, 3)]):
+        """ Run the inner loop, using an l2-regularized logistic regression.
+        
+        Parameters
+        ----------
+        reg_params: list
+            Range of lambda values to try out.
+            Default: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+        
+        Returns
+        -------
+        pred_values: (num_test_samples, ) array
+            Probability estimates for test samples, in the same order as self.y_tr.
+        features: list
+            List of indices of the selected features.
+
+        Write files
+        -----------
+        yte:
+            Contains self.y_te
+        pred_values:
+            Contains predictions
+        featuresList:
+            Contains selected features
+        """
+        # Get the optimal value of the regularization parameter by inner cross-validation
+        best_reg_param = self.cv_inner_l2_logreg(reg_params)
+
+        # Get the predictions and selected features
+        return self.train_pred_inner_l2_logreg(best_reg_param)
+
+        
+    def run_inner_l2_logreg_write(self, resdir, reg_params=[10.**k for k in range(-3, 3)]):
+        """ Run the inner loop, using an l2-regularized logistic regression.
+        Save outputs to files.
+        
+        Parameters
+        ----------
+        resdir: path
+            Path to dir where to save outputs
+        reg_params: list
+            Range of lambda values to try out.
+            Default: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+        
+        Returns
+        -------
+        pred_values: (num_test_samples, ) array
+            Probability estimates for test samples, in the same order as self.y_tr.
+        features: list
+            List of indices of the selected features.
+
+        Write files
+        -----------
+        yte:
+            Contains self.y_te
+        pred_values:
+            Contains predictions
+        featuresList:
+            Contains selected features
+        """
+        # Get the optimal value of the regularization parameter by inner cross-validation
+        best_reg_param = self.cv_inner_l1_logreg(reg_params)
+
+        # Get the predictions and selected features
+        [pred_values, features_list] = self.train_pred_inner_l1_logreg(best_reg_param)
+
+        # Save to files
+        yte_fname = '%s/yte' % resdir
+        np.savetxt(yte_fname, self.y_te, fmt='%d')
+        
+        pred_values_fname = '%s/predValues' % resdir
+        np.savetxt(pred_values_fname, pred_values)
+        
+        features_list_fname = '%s/featuresList' % resdir
+        np.savetxt(features_list_fname, features_list, fmt='%d')            
+        
+        
+    def cv_inner_l2_logreg(self, reg_params=[10.**k for k in range(-3, 3)]):
+        """ Compute the inner cross-validation loop to determine the best regularization parameter
+        for an l2-regularized logistic regression.
+        
+        Parameters
+        ----------
+        reg_params: list
+            Range of lambda values to try out.
+            Default: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+        
+        Returns
+        -------
+        best_reg_param: float
+            Optimal value of the regularization parameter.
+        """
+        # Initialize logistic regression cross-validation classifier
+        cv_clf = sklm.LogisticRegressionCV(Cs=reg_params, penalty='l2', solver='liblinear',
+                                           cv=self.nr_folds,
+                                           class_weight='balanced', scoring='roc_auc')
+
+        # Fit to training data
+        cv_clf.fit(self.x_tr, self.y_tr)
+
+        # Quality of fit?
+        y_tr_pred = cv_clf.predict_proba(self.x_tr)
+        y_tr_pred = y_tr_pred[:, cv_clf.classes_.tolist().index(1)]
+        print "\tTraining AUC:\t", skm.roc_auc_score(self.y_tr, y_tr_pred)
+
+        # Get optimal value of the regularization parameter.
+        # If there are multiple equivalent values, return the first one.
+        # Note: Small C = more regularization.
+        best_reg_param = cv_clf.C_[0]
+        print "\tall top C:\t", cv_clf.C_
+        print "\tbest C:\t", best_reg_param
+        return best_reg_param
+
+        
+    def train_pred_inner_l2_logreg(self, best_reg_param):
+        """ Train an l1-regularized logistic regression (with optimal parameter)
+        on the train set, predict on the test set.
+        
+        Parameters
+        ----------
+        best_reg_param: float
+            Optimal value of the regularization parameter.
+
+        Returns
+        -------
+        pred_values: (num_test_samples, ) array
+            Probability estimates for test samples, in the same order as trueLabels.
+        features: list
+            List of indices of the selected features.
+        """
+        # Initialize logistic regression classifier
+        classif = sklm.LogisticRegression(C=best_reg_param, penalty='l2', solver='liblinear',
+                                          class_weight='balanced')
+        
+        # Train on the training set
+        classif.fit(self.x_tr, self.y_tr)
+
+        # Predict on the test set
+        pred_values = classif.predict_proba(self.x_te)
+
+        # Only get the probability estimates for the positive class
+        pred_values = pred_values[:, classif.classes_.tolist().index(1)]
+
+        # Quality of fit
+        print "\tTest AUC:\t", skm.roc_auc_score(self.y_te, pred_values)
+
+        # Get selected features
+        # If there are less than self.max_nr_feats, these are the non-zero coefficients
+        features = np.where(classif.coef_[0])[0]
+        if len(features) > self.max_nr_feats:
+            # Prune the coefficients with lowest values
+            features = np.argsort(classif.coef_[0])[-self.max_nr_feats:]
+ 
+        print "\tNumber of selected features:\t", len(features)
+
+        return pred_values, features
+    # ================== End l2-regularized logistic regression ==================
 
         
 
@@ -757,7 +933,7 @@ class InnerCrossVal(object):
     def cv_inner_enet_logreg(self, reg_params=[[10.**k for k in range(-3, 3)],
                                                               [.5, .75, .95]]):
         """ Compute the inner cross-validation loop to determine the best regularization parameter
-        for an l1-regularized logistic regression.
+        for an l1/l2-regularized logistic regression.
         
         Parameters
         ----------
@@ -773,6 +949,7 @@ class InnerCrossVal(object):
         """
         # Compute cross-validation folds
         cross_validator = skcv.StratifiedKFold(self.y_tr, self.nr_folds)
+        print "num samples: %d" % self.x_tr.shape[0]
 
         # Compute cross-validated AUCs for all parameters
         auc_dict = {}
@@ -781,8 +958,10 @@ class InnerCrossVal(object):
                 alpha = lbd / l1_ratio
 
                 # Initialize ENet classifier
-                clf = skm.SGDClassifier(loss='log', penalty='elasticnet',
-                                        alpha=alpha, l1_ratio=l1_ratio)
+                clf = sklm.SGDClassifier(loss='log', penalty='elasticnet',
+                                         alpha=alpha, l1_ratio=l1_ratio,
+                                         n_iter=20,
+                                         class_weight='balanced')
                 y_true = []
                 y_pred = []
                 for tr, te in cross_validator:
@@ -793,7 +972,7 @@ class InnerCrossVal(object):
                     y_true.extend(self.y_tr[te])            
 
                 auc = skm.roc_auc_score(y_true, y_pred)
-                # print "alpha", alpha, "\tl1_ratio", l1_ratio, "\tauc", auc
+                print "lambda %.2e" % lbd, "\talpha  %.2e" % alpha, "\tl1_ratio", l1_ratio, "\tauc", auc
                 if not auc_dict.has_key(auc):
                     auc_dict[auc] = []
                 auc_dict[auc].append([lbd, l1_ratio])
@@ -805,9 +984,12 @@ class InnerCrossVal(object):
         best_reg_param = auc_dict[best_auc][0]
 
         # Quality of fit?
-        clf = skm.SGDClassifier(loss='log', penalty='elasticnet',
-                                alpha=(best_reg_param[0]/best_reg_param[1]),
-                                l1_ratio=best_reg_param[1])
+        clf = sklm.SGDClassifier(loss='log', penalty='elasticnet',
+                                 alpha=(best_reg_param[0]/best_reg_param[1]),
+                                 n_iter=20,
+                                 l1_ratio=best_reg_param[1], 
+                                 class_weight='balanced')
+        clf.fit(self.x_tr, self.y_tr)
         y_tr_pred = clf.predict_proba(self.x_tr)
         y_tr_pred = y_tr_pred[:, clf.classes_.tolist().index(1)]
         print "\tTraining AUC:\t", skm.roc_auc_score(self.y_tr, y_tr_pred)
@@ -837,9 +1019,12 @@ class InnerCrossVal(object):
             List of indices of the selected features.
         """
         # Initialize logistic regression classifier
-        classif = skm.SGDClassifier(loss='log', penalty='elasticnet',
-                                    alpha=(best_reg_param[0]/best_reg_param[1]),
-                                    l1_ratio=best_reg_param[1])
+        classif = sklm.SGDClassifier(loss='log', 
+                                     penalty='elasticnet',
+                                     alpha=(best_reg_param[0]/best_reg_param[1]),
+                                     l1_ratio=best_reg_param[1], 
+                                     n_iter=20,
+                                     class_weight='balanced')
         
         # Train on the training set
         classif.fit(self.x_tr, self.y_tr)
@@ -937,32 +1122,65 @@ def main():
             if not os.path.isdir(args.results_dir):
                 raise
 
-    # ========= l1 regularization =========
-    if not args.enet:
-        # Run the inner cross-validation for the l1 regularization
-        icv.run_inner_l1_logreg_write(args.results_dir,
-                                      reg_params=[2.**k for k in range(-7, -1)])
-    # ========= End l1 regularization =========
+    # ========= sfan =========
+    if use_sfan:
+        # Baseline using only connected features
+        results_dir = "%s/nosel" % args.results_dir
+        # Create results dir if it does not exist
+        if not os.path.isdir(results_dir):
+            sys.stdout.write("Creating %s\n" % results_dir)
+            try: 
+                os.makedirs(results_dir)
+            except OSError:
+                if not os.path.isdir(results_dir):
+                    raise
+                    
+        ridge_C = [10.**k for k in range(-4, 1)]
+        # ridge_C = [10.**(-3)]
+        icv.run_inner_l2_logreg_write(results_dir, reg_params=ridge_C)
+        
+        # Use sfan to select features
+        sfan_eta_values = [10**(k) for k in range(-5, -2)]
+        sfan_lbd_values = [10**(k) for k in range(-5, -2)]
+        # sfan_eta_values = [10**(-2)]
+        # sfan_lbd_values = [10**(-2)]
+        
+        icv.run_inner_sfan_write(args.results_dir,
+                                 reg_params=[itertools.product(sfan_lbd_values,
+                                                               sfan_eta_values), ridge_C])
+    # ========= End sfan =========
+    else:
+        # ========= l1 regularization =========
+        if not args.enet:
+            # Run the inner cross-validation for the l1 regularization
+            print "L1 regularization"
+            icv.run_inner_l1_logreg_write(args.results_dir,
+                                          reg_params=[2.**k for k in range(-7, -1)])
+        # ========= End l1 regularization =========
 
 
-    # ========= l1/l2 regularization =========
-    # Use a subdirectory called enet
-    results_dir = "%s/enet" % args.results_dir
-    # Create results dir if it does not exist
-    if not os.path.isdir(results_dir):
-        sys.stdout.write("Creating %s\n" % args.results_dir)
-        try: 
-            os.makedirs(results_dir)
-        except OSError:
-            if not os.path.isdir(results_dir):
-                raise
+        # ========= l1/l2 regularization =========
+        print "l1/l2 regularization"
+        # Use a subdirectory called enet
+        results_dir = "%s/enet" % args.results_dir
+        # Create results dir if it does not exist
+        if not os.path.isdir(results_dir):
+            sys.stdout.write("Creating %s\n" % args.results_dir)
+            try: 
+                os.makedirs(results_dir)
+            except OSError:
+                if not os.path.isdir(results_dir):
+                    raise
 
-    # Run the inner cross-validation for the l1/l2 regularization
-    lbd_values = []
-    l1_ratio_values = [0.5, 0.75, 0.95]
-    icv.run_inner_enet_logreg_write(results_dir,
-                                    reg_params=[lbd_values, l1_ratio_values])
-    # ========= End l1/l2 regularization =========
+        # Run the inner cross-validation for the l1/l2 regularization
+        #lbd_values = [1./1455 * 2**k for k in range(1, 7)]
+        #lbd_values = [1e-3 * 2**k for k in range(-3, 3)]
+        lbd_values = [0.01, 0.025, 0.05, 0.075, 1.]
+        l1_ratio_values = [0.15, 0.5, 0.75, 1.]
+        icv.run_inner_enet_logreg_write(results_dir,
+                                        reg_params=[lbd_values, l1_ratio_values])
+        #icv.train_pred_inner_enet_logreg([0.05, 1.])
+        # ========= End l1/l2 regularization =========
 
 
 if __name__ == "__main__":

@@ -161,6 +161,48 @@ class OuterCrossVal(object):
     # ================== End l1-regularization ==================
 
 
+    # ================== l2-regularization ==================
+    def run_outer_l2_logreg(self):
+        """ Run the outer loop of the experiment, for an l2-regularized logistic regression.
+
+        Updated attributes
+        ------------------
+        true_labels: (num_samples, ) array
+            True labels for all samples.
+        pred_labels: (num_samples, ) array
+            Predicted labels for all samples, in the same order as true_labels.
+        pred_values: (num_samples, ) array
+            Probability estimates for all samples, in the same order as true_labels.
+        features_list: list of list
+            List of list of indices of the selected features.
+        """
+        for fold in range(self.nr_outer_folds):
+            sys.stdout.write("Working on fold number %d\n" % fold)
+
+            # Read the test indices
+            data_fold_root = '%s/fold%d' % (self.network_data_root, fold)
+            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
+            
+            # Create an InnerCrossVal
+            icv = InnerCrossVal.InnerCrossVal(self.aces_data_path, data_fold_root,
+                                              self.network_type, self.nr_inner_folds,
+                                              self.max_nr_feats, self.use_nodes)
+                                              
+
+            # Get predictions and selected features for the inner loop
+            reg_params = [10.**k for k in range(-4, 1)]
+            [pred_values_fold, features_fold] = icv.run_inner_l2_logreg(reg_params=reg_params)
+
+            # Update self.true_labels, self.pred_labels, self.features_list
+            self.true_labels[te_indices] = icv.y_te
+            self.pred_values[te_indices] = pred_values_fold
+            self.features_list.append(features_fold)
+
+        # Convert probability estimates in labels
+        self.pred_labels = np.array(self.pred_values > 0, dtype='int')
+    # ================== End l1-regularization ==================
+
+
     # ================== l1/l2-regularization ==================
     def run_outer_enet_logreg(self):
         """ Run the outer loop of the experiment, for an l1/l2-regularized logistic regression.
@@ -205,9 +247,8 @@ class OuterCrossVal(object):
     # ================== End l1/l2-regularization ==================
 
 
-    def read_outer_logreg(self, inner_cv_resdir):
-        """ Read the results of the outer loop of the experiment,
-        for any logistic regression.
+    def read_inner_results(self, inner_cv_resdir):
+        """ Read the results of the inner loop of the experiment.
 
         Parameters
         ----------
@@ -290,47 +331,6 @@ class OuterCrossVal(object):
 
         # Convert probability estimates in labels
         self.pred_labels = np.array(self.pred_values > 0, dtype='int')
-            
-
-    def read_outer_sfan(self, inner_cv_resdir):
-        """ Read the results of the outer loop of the experiment,
-        for an l2-regularized logistic regression with sfan.
-
-        Parameters
-        ----------
-        inner_cv_resdir: path
-            Path to outputs of InnerCrossVal for each fold
-
-        Updated attributes
-        ------------------
-        true_labels: (num_samples, ) array
-            True labels for all samples.
-        pred_labels: (num_samples, ) array
-            Predicted labels for all samples, in the same order as true_labels.
-        pred_values: (num_samples, ) array
-            Probability estimates for all samples, in the same order as true_labels.
-        features_list: list of list
-            List of list of indices of the selected features.
-        """
-        for fold in range(self.nr_outer_folds):
-            sys.stdout.write("Reading results for fold number %d\n" % fold)
-
-            # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.data_root, fold)
-            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
-            
-            # Read results from InnerCrossVal
-            yte_fname = '%s/fold%d/yte' % (inner_cv_resdir, fold)
-            self.true_labels[te_indices] = np.loadtxt(yte_fname, dtype='int')
-
-            pred_values_fname = '%s/fold%d/predValues' % (inner_cv_resdir, fold)
-            self.pred_values[te_indices] = np.loadtxt(pred_values_fname)
-
-            features_list_fname = '%s/fold%d/featuresList' % (inner_cv_resdir, fold)
-            self.features_list.append(np.loadtxt(features_list_fname, dtype='int'))
-
-        # Convert probability estimates in labels
-        self.pred_labels = np.array(self.pred_values > 0, dtype='int')
     # ================== End sfan ==================
             
         
@@ -409,6 +409,7 @@ class OuterCrossVal(object):
                 else:
                     cix_list.append((observed - expected) / (maxposbl - expected))
         return cix_list
+        
         
     def write_results(self, results_dir):
         """ Create results files.
@@ -519,6 +520,14 @@ def main():
             num_samples += len(f.readlines())
             f.close()
 
+    # Create results dir if it does not exist
+    if not os.path.isdir(args.results_dir):
+        sys.stdout.write("Creating %s\n" % args.results_dir)
+        try: 
+            os.makedirs(args.results_dir)
+        except OSError:
+            if not os.path.isdir(args.results_dir):
+                raise
 
     if args.sfan:
         # ========= Sfan =========
@@ -529,17 +538,26 @@ def main():
                                           max_nr_feats=args.max_nr_feats,
                                           use_nodes=True, use_sfan=True, sfan_path=args.sfan)
 
+        # Baseline using only connected features
         # Run the experiment
-        ocv.run_outer_sfan(args.results_dir)
+        ocv.run_outer_l2_logreg()
 
         # Create results dir if it does not exist
-        if not os.path.isdir(args.results_dir):
-            sys.stdout.write("Creating %s\n" % args.results_dir)
+        results_dir = '%s/nosel' % args.results_dir
+        if not os.path.isdir(results_dir):
+            sys.stdout.write("Creating %s\n" % results_dir)
             try: 
-                os.makedirs(args.results_dir)
+                os.makedirs(results_dir)
             except OSError:
-                if not os.path.isdir(args.results_dir):
+                if not os.path.isdir(results_dir):
                     raise
+
+        # Write results
+        ocv.write_results(results_dir)
+
+        # Use sfan to select features
+        # Run the experiment
+        ocv.run_outer_sfan()
 
         print "Number of features:\t", [len(x) for x in ocv.features_list]
         print "AUC:\t", ocv.compute_auc()
@@ -557,15 +575,6 @@ def main():
         if not args.enet:
             # Run the experiment
             ocv.run_outer_l1_logreg()
-
-            # Create results dir if it does not exist
-            if not os.path.isdir(args.results_dir):
-                sys.stdout.write("Creating %s\n" % args.results_dir)
-                try: 
-                    os.makedirs(args.results_dir)
-                except OSError:
-                    if not os.path.isdir(args.results_dir):
-                        raise
 
             print "Number of features:\t", [len(x) for x in ocv.features_list]
             print "AUC:\t", ocv.compute_auc()
