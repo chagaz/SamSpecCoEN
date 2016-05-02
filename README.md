@@ -132,7 +132,7 @@ python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness \
        ${data_dir}/repeat${repeat}/results -o 10 -k 5 -m 1000 --nodes
 ```
 
-The ```--sfan``` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan).
+The ```--sfan``` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan). This will also run an l2-regularized logistic regression only on the nodes that are connected in the network (i.e. not using sfan at all); the results will be under ```${data_dir}/repeat${repeat}/results/nosel$```.
 
 ```
 python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness  \
@@ -181,7 +181,7 @@ python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness \
        ${data_dir}/repeat${repeat}/results -o 10 -k 5 -m 1000 --nodes
 ```           
 
-The ```--sfan``` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan).
+The ```--sfan``` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan). This will also run an l2-regularized logistic regression only on the nodes that are connected in the network (i.e. not using sfan at all); the results will be under ```${data_dir}/repeat${repeat}/results/nosel$```.
 
 ```
 python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} lioness \
