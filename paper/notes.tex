@@ -89,11 +89,40 @@ FERAL proceeds as follows:
 \end{enumerate}
 
 
-\section{Lioness}
-Lioness~\cite{kuijjer2015} is, to the best of our knowledge, the only existing method to build sample-specific co-expression networks from gene expression data.
+\section{LIONESS}
+LIONESS~\cite{kuijjer2015} is, to the best of our knowledge, the only existing method to build sample-specific co-expression networks from gene expression data.\\
+
+LIONESS considers that the global network is made of the aggregation of individual contributions from each sample. 
+Denoting by $e_{ij}^\alpha$ the weight of the edge between $i$ and $j$ computed over all samples;
+by $e_{ij}^{(\alpha - q)}$ the weight of the edge between $i$ and $j$ computed over all samples but sample $q$;
+and by $e_{ij}^q$ the weight of the edge between $i$ and $j$ contributed by sample $q$:
+    \[
+    e_{ij}^\alpha = \sum_{s=1}^n \frac{1}{n} e_{ij}^s 
+    \mbox{ and }
+    e_{ij}^{(\alpha - q)} = \sum_{s=1}^n \frac{1}{(n-1)} e_{ij}^s
+    \]
+
+Hence
+    \[
+    e_{ij}^q = \frac{1}{n} \left(  e_{ij}^{\alpha} - e_{ij}^{(\alpha - q)} \right) + e_{ij}^{(\alpha - q)}.
+    \]
+
+In the case of a network computed using Pearson's correlation, assuming the number $n$ of samples to be large,~\cite{kuijjer2015} show that the individual contributions of each sample can be approximated by
+    \[
+    e_{ij}^q \approx \frac{n}{n-1} \left( \frac{X_i^q - \bar {X_i}}{S_{X_i}} \right) 
+    \left( \frac{X_j^q - \bar {X_j}}{S_{X_j}} \right)
+    \]
+    where $S_{X_i} = \sqrt{\frac{1}{n-1} \sum_{s=1}^n \left( X_i^s - \bar{X_i} \right)^2}$ is the sample standard deviation of gene $i$.
+
 
 \section{Reglines}
+Also based on Pearson's correlation, we propose to compute sample-specific edge weights based not on the contribution of each sample to the total correlation, but on the deviation of each sample from the overall relationship between both genes. To this aim, we use the distance of the sample to the regression line between both variables.
 
+Given a pair $(i, j)$ of genes, We fit a regression line $\beta_0^{ij} + \beta_1^{ij} x_i = x_j$, and the edge weight of $(i, j)$ for sample $q$ is given by:
+
+\[
+e_{ij}^q = \frac{|\beta_1^{ij} x_i - x_j + \beta_0^{ij}|}{\sqrt{(\beta_1^{ij})^2+1}}.
+\]
 
 \bibliographystyle{plain}
 
