@@ -11,12 +11,13 @@ Each individual weights reflects the sample's contribution/deviation from this p
 
 The two options are:  
 1. LIONESS [Kuijjer et al., 2015]: For a given sample, an edge-weight is the contribution of this sample to the global correlation.  
-2. For a given sample, the edge-weight is the distance of that sample to the regression line fitting the expression of both genes. This quantifies how much this sample deviates from the population-wide behaviour.  
+2. For a given sample, the edge-weight is the distance of that sample to the regression line fitting the expression of both genes ''in a healthy population'' . This quantifies how much this sample deviates from the ''healthy'' population-wide behaviour.  
 
 We also use ideas from [Zhang and Horvath, 2005] to build the global (population-wide) network, i.e. that a co-expression network should be approximately scale-free.  
 
 This code is meant to be used on the ACES gene expression data [Staiger et al., 2013].  
 
+The healthy gene expression data used here comes from [Lukk et al., 2010]. Data is available in [https://www.ebi.ac.uk/arrayexpress/experiments/E-MTAB-62/](ArrayExpress).
 
 Requirements
 ============
@@ -34,6 +35,11 @@ ACES
 * untar in this (SamSpecCoEN) directory
 * add an empty file __init__.py under ACES/experiments
 * make sure to have the required Python packages (in particular, xlrd)
+
+ArrayExpress E-MTAB-62
+----------------------
+* Download from [https://www.ebi.ac.uk/arrayexpress/experiments/E-MTAB-62/](ArrayExpress)
+* Store under ArrayExpress/ at the root of this repository
 
 Usage
 =====
