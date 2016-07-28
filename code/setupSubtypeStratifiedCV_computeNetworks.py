@@ -1,15 +1,13 @@
 # @Author 
 # Chloe-Agathe Azencott
 # chloe-agathe.azencott@mines-paristech.fr
-# April 2016
+# July 2016
 
 import argparse
 import h5py
 import numpy as np
 import os
 import sys
-
-#from sklearn import cross_validation as skcv 
 
 DATA_DIR = "/share/data40T/chloe/SamSpecCoEN"
 
@@ -19,7 +17,7 @@ numFolds = 10
 
 
 def main():
-    """ Create sample-specific co-expression networks for one fold and one repeat
+    """ Create sample-specific LIONESS co-expression networks for one fold and one repeat
     of a subtype-stratified CV on the RFS data.
 
     Meant to be run on the cluster.
@@ -41,14 +39,6 @@ def main():
                 gzipped file containing the (self.numSamples, numEdges) array
                 describing the edge weights of the LIONESS co-expression networks
                 for the test samples.
-            <k>/regline/edge_weights.gz:
-                gzipped file containing the (self.numSamples, numEdges) array
-                describing the edge weights of the Regline co-expression networks
-                for the training samples.
-            <k>/regline/edge_weights_te.gz:
-                gzipped file containing the (self.numSamples, numEdges) array
-                describing the edge weights of the Regline co-expression networks
-                for the test samples.
     Example:
         $ python setUpSubTypeStratifiedCV_computeNetworks.py 0 0
     
@@ -65,34 +55,34 @@ def main():
     parser.add_argument("repeat", help="Index of the repeat", type=int)
     args = parser.parse_args()
 
-    outDir = '%s/outputs/U133A_combat_RFS/subtype_stratified/repeat%d' % (DATA_DIR, args.repeat)
+    out_dir = '%s/outputs/U133A_combat_RFS/subtype_stratified/repeat%d' % (DATA_DIR, args.repeat)
 
     # Get expression data, sample labels.
     # Do not normalize the data while loading it (so as not to use test data for normalization).
     f = h5py.File("%s/ACES/experiments/data/U133A_combat.h5" % DATA_DIR)
-    expressionData = np.array(f['U133A_combat_RFS']['ExpressionData'])
-    sampleLabels = np.array(f['U133A_combat_RFS']['PatientClassLabels'])
+    expression_data = np.array(f['U133A_combat_RFS']['ExpressionData'])
+    sample_labels = np.array(f['U133A_combat_RFS']['PatientClassLabels'])
     f.close()
-    
-    foldNr = args.fold
+
+    fold_nr = args.fold
     # Output directory
-    foldDir = "%s/fold%d" % (outDir, foldNr)
+    fold_dir = "%s/fold%d" % (out_dir, fold_nr)
 
     # Read train indices from file
-    trIndicesF = '%s/train.indices' % foldDir
-    trIndices = np.loadtxt(trIndicesF, dtype=int)
-    sys.stdout.write("Read training indices for fold %d from %s\n" % (foldNr, trIndicesF))
+    tr_indices_f = '%s/train.indices' % fold_dir
+    tr_indices = np.loadtxt(tr_indices_f, dtype=int)
+    sys.stdout.write("Read training indices for fold %d from %s\n" % (fold_nr, tr_indices_f))
 
     # Read test indices from file
-    teIndicesF = '%s/test.indices' % foldDir
-    teIndices = np.loadtxt(teIndicesF, dtype=int)
-    sys.stdout.write("Read training indices for fold %d from %s\n" % (foldNr, teIndicesF))
-    print teIndices
-    print teIndices.shape
+    te_indices_f = '%s/test.indices' % fold_dir
+    te_indices = np.loadtxt(te_indices_f, dtype=int)
+    sys.stdout.write("Read training indices for fold %d from %s\n" % (fold_nr, te_indices_f))
+    print te_indices
+    print te_indices.shape
 
     # Create networks
-    CoExpressionNetwork.run_whole_data(expressionData, sampleLabels, foldDir,
-                                       trIndices=trIndices, teIndices=teIndices)
+    CoExpressionNetwork.run_whole_data_lioness(expression_data, sample_labels, fold_dir,
+                                               tr_indices=tr_indices, te_indices=te_indices)
 
 
 
