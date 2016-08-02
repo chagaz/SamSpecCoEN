@@ -119,15 +119,11 @@ class CoExpressionNetwork(object):
         
     #@profile
     def create_global_network(self, threshold, out_path):
-        """ Create the global (population-wise) co-expression network.
+        """ Create the global co-expression network **from the reference data**
 
-        This is done by computing (on the training set if any) Pearson's correlation over:
-        - the whole population
-        - the positive samples
-        - the negative samples
-        and then thresholding.
-        An edge is kept if its weight (i.e. Pearson's correlation between the expression of the 2 genes)
-        is greater than the threshold in any of the three networks.
+        This is done by computing, on the reference data, Pearson's correlation over the whole population
+        and then thresholding: an edge is kept if its weight (i.e. Pearson's correlation between the
+        expression of the 2 genes) is greater than the threshold in this network
 
         Parameters
         ----------
@@ -153,21 +149,13 @@ class CoExpressionNetwork(object):
                 <index of gene 1> <index of gene 2>
             By convention, the index of gene 1 is smaller than that of gene 2.
         """
-        # Restrict the data to the positive samples
-        x_pos = self.expression_data[np.where(self.sample_labels)[0], :]
-        
-        # Restrict the data to the negative samples
-        x_neg = self.expression_data[np.where(np.logical_not(self.sample_labels))[0], :]
-        
-        # Compute Pearson's correlation, gene by gene
-        self.global_network = np.corrcoef(np.transpose(self.expression_data))
+        # Compute absolute value of Pearson's correlations between genes
+        self.global_network = np.abs(np.corrcoef(np.transpose(self.refc_data)))
 
         # Threshold the network
-        self.global_network = np.where(np.logical_or(np.logical_or(self.global_network > threshold,
-                                                                  np.corrcoef(np.transpose(x_neg)) > threshold),
-                                                    np.corrcoef(np.transpose(x_pos)) > threshold),
-                                      self.global_network, 0)
-
+        self.global_network = np.where((self.global_network > threshold),
+                                       self.global_network, 0)
+        
         # Only keep the upper triangular matrix (it's symmetric)
         self.global_network[np.tril_indices(self.num_genes)] = 0
         
@@ -402,9 +390,9 @@ class CoExpressionNetwork(object):
                                     self.refc_data[:, e[1]])[0]
 
             # Compute distance from sample to line:
-            weights[edgeIdx, :] = np.abs(reg_w[1]*self.expression_data[:, e[0]] - \
-                                          self.expression_data[:, e[1]] + reg_w[0]) / \
-                np.sqrt(reg_w[1]**2+1)
+            weights[edgeIdx, :] = np.abs(reg_w[0]*self.expression_data[:, e[0]] - \
+                                          self.expression_data[:, e[1]] + reg_w[1]) / \
+                np.sqrt(reg_w[0]**2+1)
 
         # Save edge weights to file
         np.savetxt(weights_f, weights, fmt='%.5f')
@@ -449,7 +437,7 @@ def run_whole_data(expression_data, refc_expression_data, sample_labels, out_dir
     co_expression_net.normalize_expression_data()
 
     # Create global network
-    co_expression_net.create_global_network(0.6, ("%s/reglref_edges.gz" % out_dir))
+    co_expression_net.create_global_network(0.75, ("%s/reglref_edges.gz" % out_dir))
 
     # Check whether the scale-free assumptions are verified
     scalefree_path = '%s/reglref_connectivity.png' % out_dir
@@ -552,7 +540,7 @@ def run_whole_data_lioness(expression_data, sample_labels, out_dir,
     co_expression_net.normalize_expression_data()
 
     # Create global network
-    co_expression_net.create_global_network(0.6, ("%s/edges.gz" % out_dir))
+    co_expression_net.create_global_network(0.75, ("%s/edges.gz" % out_dir))
 
     # Check whether the scale-free assumptions are verified
     scalefree_path = '%s/global_connectivity.png' % out_dir
