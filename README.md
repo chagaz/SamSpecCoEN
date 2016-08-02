@@ -41,6 +41,10 @@ ArrayExpress E-MTAB-62
 * Download from [https://www.ebi.ac.uk/arrayexpress/experiments/E-MTAB-62/](ArrayExpress)
 * Store under ArrayExpress/ at the root of this repository
 
+Paper
+-----
+* Bioinformatics style files from http://www.oxfordjournals.org/our_journals/bioinformatics/for_authors/submission_online.html
+
 Usage
 =====
 Pre-processing reference data
