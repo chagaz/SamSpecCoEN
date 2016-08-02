@@ -42,46 +42,47 @@ def main():
     fd = pd.read_csv('ArrayExpress/E-MTAB-62.sdrf.txt', delimiter='\t')
     normals = fd[fd['Characteristics[4 meta-groups]']=='normal']['Source Name'].tolist()
 
-    with open('ArrayExpress/hgu133a_rma_okFiles_080619_MAGETAB.csv', 'r') as f:
-        header = f.readline()
-        f.close()
-    cols = [i for (i, x) in enumerate(header.split("\t")) if x.lstrip('"').rstrip('"') in normals]
-
-
-    # Read E-MTAB-62 data
-    data = np.loadtxt('ArrayExpress/hgu133a_rma_okFiles_080619_MAGETAB.csv', 
-                      skiprows=2, delimiter='\t', usecols=cols)
-    
-    
-    # Get gene names
-    gene_names = np.loadtxt('ArrayExpress/hgu133a_rma_okFiles_080619_MAGETAB.csv', 
-                            usecols=[0], dtype='str')
-    gene_names = [x.lstrip('"').rstrip('"') for x in gene_names]
-
-
-    # Transform hgu133a_rma_okFiles_080619_MAGETAB.csv into .dat
-    # match the format of NormalisingData/R_playground/U133AnormalizedExpression.dat
     csv_data_fname = 'ArrayExpress/hgu133a_rma_okFiles_080619_MAGETAB.csv'
     # first line = sample names, tab separated, between " quotes (e.g  "1102960569.CEL"  )
     # second line = to be ignored
     # first column = gene names, between " quotes (e.g. "1255_g_at")
-    with open(csv_data_fname) as f:
-        f.readline() # first line
-        f.readline() # second line
-        fcol = [line.split()[0] for line in f]
+
+    # Get sample IDs (first line of csv_data_fname)
+    with open(csv_data_fname, 'r') as f:
+        header = f.readline() # samples 
         f.close()
+    cols = [i for (i, x) in enumerate(header.split("\t")) \
+            if x.lstrip('"').rstrip('"') in normals]
+    print len(cols), "samples"
 
-    D = np.hstack((fcol.reshape(fcol.shape[0], 1), data.T))
+    # Get gene names (first column of csv_data_fname)
+    gene_names = np.loadtxt(csv_data_fname, 
+                            usecols=[0], dtype='str')
+    gene_names = gene_names[2:]
+    print len(gene_names), "genes"
 
-    # Save data into .dat file
-    datafile = '%s/hgu133a_rma_okFiles_080619_MAGETAB.dat' % res_dir
+    # Get expression data itself
+    data = np.loadtxt(csv_data_fname, 
+                      skiprows=2, delimiter='\t', usecols=cols)
+
+    
+    
+
+    # Transform hgu133a_rma_okFiles_080619_MAGETAB.csv into .dat
+    # match the format of NormalisingData/R_playground/U133AnormalizedExpression.dat:
     # first line = gene names, space-separated, between " quotes (e.g. "1255_g_at")
     # first column = GSM names, between " quotes (e.g. "GSM107074.CEL.gz")
+    datafile = '%s/hgu133a_rma_okFiles_080619_MAGETAB.dat' % res_dir
+
+    fcol = np.array([header.split("\t")[ix] for ix in cols])
+    fcol = fcol.reshape((fcol.shape[0], 1))
+    D = np.hstack((fcol, data.T))
+
+    # Save data into .dat file
     np.savetxt(datafile, D, fmt='%s', comments='',
                delimiter=" ", header=" ".join(['"%s"' % x for x in gene_names[2:]]))
 
-    # Read the data
-    datafile = '%s/hgu133a_rma_okFiles_080619_MAGETAB.dat' % res_dir
+    # Read the data as ExpressionDataset
     (affyIDs, patientIDs, exprMatrix, exprs) = mapData.readExpressionData(datafile)
 
     ### Create an ExpressionDataset object
