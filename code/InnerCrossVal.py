@@ -60,19 +60,21 @@ class InnerCrossVal(object):
     Current composite-feature classification methods do not outperform simple single-genes
     classifiers in breast cancer prognosis. Front Genet 4.  
     """
-    def __init__(self, aces_data_root, data_fold_root, network_type, nr_folds,
+    def __init__(self, aces_data_root, network_fold_root, data_fold_root, network_type, nr_folds,
                  max_nr_feats=400, use_nodes=False, use_sfan=False, sfan_path=None):
         """
         Parameters
         ----------
         aces_data_root: path
             Path to folder containing ACES data
+        network_fold_root: path
+            Path to folder containing network data.
         data_fold_root: path
             Path to folder containing data for the fold.
         network_type: string
             Type of network to work with
             Correspond to a folder in data_fold_root
-            Possible value: 'lioness', 'regline'
+            Possible value: 'lioness', 'reglref'
         nr_folds: int
             Number of (inner) cross-validation folds.
         max_nr_feats: int
@@ -86,11 +88,17 @@ class InnerCrossVal(object):
             Path to sfan code.
         """
         try:
-            assert network_type in ['lioness', 'regline']
+            assert network_type in ['lioness', 'reglref']
         except AssertionError:
-            sys.stderr.write("network_type should be one of 'lioness', 'regline'.\n")
+            sys.stderr.write("network_type should be one of 'lioness', 'reglref'.\n")
             sys.stderr.write("Aborting.\n")
             sys.exit(-1)
+            
+
+        if (network_type != 'lioness') or use_nodes or use_sfan:
+            # Get train/test indices for fold
+            tr_indices = np.loadtxt('%s/train.indices' % data_fold_root, dtype='int')
+            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
 
         if use_nodes or use_sfan:
             print "Using node weights as features"
@@ -102,20 +110,22 @@ class InnerCrossVal(object):
             aces_data = HDF5GroupToExpressionDataset(f['U133A_combat_RFS'], checkNormalise=False)
             f.close()
 
-            # Get train/test indices for fold
-            tr_indices = np.loadtxt('%s/train.indices' % data_fold_root, dtype='int')
-            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
-
             # Get Xtr, Xte
             self.x_tr = aces_data.expressionData[tr_indices, :]
             self.x_te = aces_data.expressionData[te_indices, :]
         else:
             print "Using edge weights as features"
-            x_tr_f = '%s/%s/edge_weights.gz' % (data_fold_root, network_type)
-            self.x_tr = np.loadtxt(x_tr_f).transpose()
+            if network_type == 'lioness':
+                x_tr_f = '%s/%s/edge_weights.gz' % (data_fold_root, network_type)
+                self.x_tr = np.loadtxt(x_tr_f).transpose()
 
-            x_te_f = '%s/%s/edge_weights_te.gz' % (data_fold_root, network_type)
-            self.x_te = np.loadtxt(x_te_f).transpose()
+                x_te_f = '%s/%s/edge_weights_te.gz' % (data_fold_root, network_type)
+                self.x_te = np.loadtxt(x_te_f).transpose()
+            else: # network_type == 'reglref'
+                w_f = '%s/%s_edge_weights.gz' % (network_fold_root, network_type)
+                w = np.loadtxt(w_f).transpose()
+                self.x_tr = w[tr_indices, :]
+                self.x_te = w[te_indices, :]
 
         # Number of features
         self.num_features = self.x_tr.shape[1]
@@ -1059,10 +1069,12 @@ def main():
 
     Example
     -------
-        $ python InnerCrossVal.py ACES outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 lioness \
+        $ python InnerCrossVal.py ACES outputs/U133A_combat_RFS/ \
+          outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 lioness \
           outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness/fold0 -k 5 -m 1000 
 
-        $ python InnerCrossVal.py ACES outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 lioness \
+        $ python InnerCrossVal.py ACES outputs/U133A_combat_RFS/ \
+          outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 lioness \
           outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/sfan/fold0 -k 5 -m 1000 \
           --sfan  ../../sfan/code 
 
@@ -1081,6 +1093,7 @@ def main():
                                      add_help=True)
     parser.add_argument("aces_data_path", help="Path to the folder containing the ACES data")
     parser.add_argument("network_data_path", help="Path to the folder containing the network data")
+    parser.add_argument("fold_data_path", help="Path to the folder containing data for the fold")
     parser.add_argument("network_type", help="Type of co-expression networks")
     parser.add_argument("results_dir", help="Folder where to store results")
     parser.add_argument("-k", "--num_inner_folds", help="Number of inner cross-validation folds",
@@ -1096,9 +1109,9 @@ def main():
     args = parser.parse_args()
 
     try:
-        assert args.network_type in ['lioness', 'regline']
+        assert args.network_type in ['lioness', 'reglref']
     except AssertionError:
-        sys.stderr.write("network_type should be one of 'lioness', 'regline'.\n")
+        sys.stderr.write("network_type should be one of 'lioness', 'reglref'.\n")
         sys.stderr.write("Aborting.\n")
         sys.exit(-1)
 
@@ -1108,8 +1121,8 @@ def main():
         use_sfan = True
         
     # Initialize InnerCrossVal
-    icv = InnerCrossVal(args.aces_data_path, args.network_data_path, args.network_type, 
-                        args.num_inner_folds, 
+    icv = InnerCrossVal(args.aces_data_path, args.network_data_path, args.fold_data_path,
+                        args.network_type, args.num_inner_folds, 
                         max_nr_feats=args.max_nr_feats, 
                         use_nodes=args.nodes, use_sfan=use_sfan, sfan_path=args.sfan)
 

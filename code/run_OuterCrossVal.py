@@ -1,7 +1,7 @@
 # @Author 
 # Chloe-Agathe Azencott
 # chloe-agathe.azencott@mines-paristech.fr
-# April 2016
+# July 2016
 
 import argparse
 import h5py
@@ -28,10 +28,17 @@ def main():
     Example
     -------
         $ python run_OuterCrossVal.py ACES/experiments/data/ \
+         outputs/U133A_combat_RFS/subtype_stratified/repeat0 \
          outputs/U133A_combat_RFS/subtype_stratified/repeat0 lioness \
          outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness -o 10 -k 5 -m 1000
 
         $ python run_OuterCrossVal.py ACES/experiments/data/ \
+         outputs/U133A_combat_RFS/subtype_stratified/repeat0 \
+         outputs/U133A_combat_RFS/ reglref \
+         outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/reglref -o 10 -k 5 -m 1000
+
+        $ python run_OuterCrossVal.py ACES/experiments/data/ \
+          outputs/U133A_combat_RFS/subtype_stratified/repeat0 \
           outputs/U133A_combat_RFS/subtype_stratified/repeat0 lioness \
           outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/sfan -o 10 -k 5 -m 1000 \
           -s ../../sfan/code 
@@ -47,6 +54,7 @@ def main():
     parser = argparse.ArgumentParser(description="Cross-validate sample-specific co-expression networks",
                                      add_help=True)
     parser.add_argument("aces_data_path", help="Path to the folder containing the ACES data")
+    parser.add_argument("experiment_data_path", help="Path to the folder containing all the folds")
     parser.add_argument("network_data_path", help="Path to the folder containing the network data")
     parser.add_argument("network_type", help="Type of co-expression networks")
     parser.add_argument("results_dir", help="Folder where inner cross-validation results are stored")
@@ -65,16 +73,16 @@ def main():
     args = parser.parse_args()
 
     try:
-        assert args.network_type in ['lioness', 'regline']
+        assert args.network_type in ['lioness', 'reflref']
     except AssertionError:
-        sys.stderr.write("network_type should be one of 'lioness', 'regline'.\n")
+        sys.stderr.write("network_type should be one of 'lioness', 'reflref'.\n")
         sys.stderr.write("Aborting.\n")
         sys.exit(-1)
 
     # Get the total number of samples
     num_samples = 0
     for fold_nr in range(args.num_outer_folds):
-        with open('%s/fold%d/test.indices' % (args.network_data_path, fold_nr)) as f:
+        with open('%s/fold%d/test.indices' % (args.experiment_data_path, fold_nr)) as f:
             num_samples += len(f.readlines())
             f.close()
     print "%d samples" % num_samples
@@ -82,7 +90,8 @@ def main():
     if args.sfan:
         # ========= Sfan =========
         # Initialize OuterCrossVal
-        ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.network_data_path, 
+        ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.experiment_data_path,
+                                          args.network_data_path,
                                           args.network_type, num_samples,
                                           args.num_inner_folds, args.num_outer_folds, 
                                           max_nr_feats=args.max_nr_feats,
@@ -106,7 +115,8 @@ def main():
 
     else:
         # Initialize OuterCrossVal
-        ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.network_data_path, 
+        ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.experiment_data_path,
+                                          args.network_data_path, 
                                           args.network_type, num_samples,
                                           args.num_inner_folds, args.num_outer_folds, 
                                           max_nr_feats=args.max_nr_feats,
