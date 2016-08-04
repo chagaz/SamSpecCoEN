@@ -20,6 +20,8 @@ import utils
 orange_color = '#d66000'
 blue_color = '#005599'
 
+THRESHOLD = 0.5
+
 class CoExpressionNetwork(object):
     """ Create and manipulate sample-specific co-expression networks.
 
@@ -150,7 +152,8 @@ class CoExpressionNetwork(object):
             By convention, the index of gene 1 is smaller than that of gene 2.
         """
         # Compute absolute value of Pearson's correlations between genes
-        self.global_network = np.abs(np.corrcoef(np.transpose(self.refc_data)))
+        # self.global_network = np.abs(np.corrcoef(np.transpose(self.refc_data)))
+        self.global_network = np.abs(np.corrcoef(np.transpose(self.expression_data)))
 
         # Threshold the network
         self.global_network = np.where((self.global_network > threshold),
@@ -220,8 +223,13 @@ class CoExpressionNetwork(object):
 
         connectivities = np.round(np.sum(self.global_network + self.global_network.transpose(), axis=1)) 
 
+        # Compute number of nodes connected (at least one neighbor)
+        nnodes = np.shape(np.nonzero(connectivities))[1]
+        print nnodes, "genes in the network"
+        
         # Compute mean network connectivity
-        ave_conn = np.mean(connectivities)
+        #ave_conn = np.mean(connectivities)
+        ave_conn = np.sum(connectivities) / nnodes
 
         # Compute log10(connectivites)
         k_values = np.unique(connectivities)
@@ -437,7 +445,7 @@ def run_whole_data(expression_data, refc_expression_data, sample_labels, out_dir
     co_expression_net.normalize_expression_data()
 
     # Create global network
-    co_expression_net.create_global_network(0.75, ("%s/reglref_edges.gz" % out_dir))
+    co_expression_net.create_global_network(THRESHOLD, ("%s/reglref_edges.gz" % out_dir))
 
     # Check whether the scale-free assumptions are verified
     scalefree_path = '%s/reglref_connectivity.png' % out_dir
@@ -540,7 +548,7 @@ def run_whole_data_lioness(expression_data, sample_labels, out_dir,
     co_expression_net.normalize_expression_data()
 
     # Create global network
-    co_expression_net.create_global_network(0.75, ("%s/edges.gz" % out_dir))
+    co_expression_net.create_global_network(THRESHOLD, ("%s/edges.gz" % out_dir))
 
     # Check whether the scale-free assumptions are verified
     scalefree_path = '%s/global_connectivity.png' % out_dir

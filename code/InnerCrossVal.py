@@ -1173,25 +1173,26 @@ def main():
 
 
         # ========= l1/l2 regularization =========
-        print "l1/l2 regularization"
-        # Use a subdirectory called enet
-        results_dir = "%s/enet" % args.results_dir
-        # Create results dir if it does not exist
-        if not os.path.isdir(results_dir):
-            sys.stdout.write("Creating %s\n" % args.results_dir)
-            try: 
-                os.makedirs(results_dir)
-            except OSError:
-                if not os.path.isdir(results_dir):
-                    raise
+        if args.enet:
+            print "l1/l2 regularization"
+            # Use a subdirectory called enet
+            results_dir = "%s/enet" % args.results_dir
+            # Create results dir if it does not exist
+            if not os.path.isdir(results_dir):
+                sys.stdout.write("Creating %s\n" % args.results_dir)
+                try: 
+                    os.makedirs(results_dir)
+                except OSError:
+                    if not os.path.isdir(results_dir):
+                        raise
 
-        # Run the inner cross-validation for the l1/l2 regularization
-        #lbd_values = [1./1455 * 2**k for k in range(1, 7)]
-        #lbd_values = [1e-3 * 2**k for k in range(-3, 3)]
-        lbd_values = [0.01, 0.025, 0.05, 0.075, 1.]
-        l1_ratio_values = [0.15, 0.5, 0.75, 1.]
-        icv.run_inner_enet_logreg_write(results_dir,
-                                        reg_params=[lbd_values, l1_ratio_values])
+            # Run the inner cross-validation for the l1/l2 regularization
+            #lbd_values = [1./1455 * 2**k for k in range(1, 7)]
+            #lbd_values = [1e-3 * 2**k for k in range(-3, 3)]
+            lbd_values = [0.01, 0.025, 0.05, 0.075, 1.]
+            l1_ratio_values = [0.15, 0.5, 0.75, 1.]
+            icv.run_inner_enet_logreg_write(results_dir,
+                                            reg_params=[lbd_values, l1_ratio_values])
         #icv.train_pred_inner_enet_logreg([0.05, 1.])
         # ========= End l1/l2 regularization =========
 
