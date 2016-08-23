@@ -121,7 +121,7 @@ class CoExpressionNetwork(object):
         
     #@profile
     def create_global_network(self, threshold, out_path):
-        """ Create the global co-expression network **from the reference data**
+        """ Create the global co-expression network **from a subset of the data**
 
         This is done by computing, on the reference data, Pearson's correlation over the whole population
         and then thresholding: an edge is kept if its weight (i.e. Pearson's correlation between the
@@ -151,9 +151,13 @@ class CoExpressionNetwork(object):
                 <index of gene 1> <index of gene 2>
             By convention, the index of gene 1 is smaller than that of gene 2.
         """
+        # Sample 50% of the genes
+        sub_sample = np.random.choice(range(self.num_samples),
+                                      replace=False, size=self.num_samples*9/10)
+        
         # Compute absolute value of Pearson's correlations between genes
         # self.global_network = np.abs(np.corrcoef(np.transpose(self.refc_data)))
-        self.global_network = np.abs(np.corrcoef(np.transpose(self.expression_data)))
+        self.global_network = np.abs(np.corrcoef(np.transpose(self.expression_data[sub_sample, :])))
 
         # Threshold the network
         self.global_network = np.where((self.global_network > threshold),
@@ -161,7 +165,26 @@ class CoExpressionNetwork(object):
         
         # Only keep the upper triangular matrix (it's symmetric)
         self.global_network[np.tril_indices(self.num_genes)] = 0
-        
+
+
+        # Repeat 9 times:
+        for r_idx in range(9):
+            sub_sample = np.random.choice(range(self.num_samples),
+                                          replace=False, size=self.num_samples*5/10)
+            current_network = np.abs(np.corrcoef(np.transpose(self.expression_data[sub_sample, :])))
+            current_network = np.where(current_network > threshold, current_network, 0)
+            current_network[np.tril_indices(self.num_genes)] = 0
+
+            # # intersect with global network
+            # self.global_network = np.where(current_network, self.global_network, 0)
+
+            # add to global network 
+            self.global_network += current_network
+            del current_network
+
+        # Re-threshold to include only edges that were included at least half the time
+        self.global_network = np.where(self.global_network > 4, self.global_network, 0)
+            
         sys.stdout.write("A global network of %d edges was constructed.\n" % \
                          np.count_nonzero(self.global_network))
 
