@@ -3,18 +3,23 @@
 
 # DATA FOLDERS
 ACES
+ArrayExpress
 FERAL
 FERAL_supp_data
 GSE_RFS
 GSE_
+NormalisingData
 outputs/
 
 # Packages
 *.tgz
+*.tar.gz
 
-# Compiled files
+# Compiled files 
 *.pyc
 
+# Pickled files
+*.pickle
 
 # Jupyter notebooks
 .ipynb_checkpoints/
