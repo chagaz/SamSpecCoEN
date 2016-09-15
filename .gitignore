@@ -3,10 +3,12 @@
 
 # DATA FOLDERS
 ACES
+ArrayExpress
 FERAL
 FERAL_supp_data
 GSE_RFS
 GSE_
+NormalisingData
 outputs/
 
 # Packages
@@ -15,6 +17,8 @@ outputs/
 # Compiled files
 *.pyc
 
+# Pickled files
+*.pickle
 
 # Jupyter notebooks
 .ipynb_checkpoints/
