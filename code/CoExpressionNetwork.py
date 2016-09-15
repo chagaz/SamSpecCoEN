@@ -1,7 +1,7 @@
 # @Author 
 # Chloe-Agathe Azencott
 # chloe-agathe.azencott@mines-paristech.fr
-# July 2016
+# September 2016
 
 import argparse
 import h5py
@@ -20,7 +20,7 @@ import utils
 orange_color = '#d66000'
 blue_color = '#005599'
 
-THRESHOLD = 0.5
+THRESHOLD = 0.6
 
 class CoExpressionNetwork(object):
     """ Create and manipulate sample-specific co-expression networks.
@@ -120,12 +120,15 @@ class CoExpressionNetwork(object):
         self.num_edges = None
         
     #@profile
-    def create_global_network(self, threshold, out_path):
+    def create_global_network_fromsubsample(self, threshold, out_path):
         """ Create the global co-expression network **from a subset of the data**
 
-        This is done by computing, on the reference data, Pearson's correlation over the whole population
+        This is done by computing, on subsets of the reference data,
+        Pearson's correlation over the whole population
         and then thresholding: an edge is kept if its weight (i.e. Pearson's correlation between the
-        expression of the 2 genes) is greater than the threshold in this network
+        expression of the 2 genes) is greater than the threshold in this network.
+
+        The procedure is repeated 10 times and edgest that appear at least half the time are kept.
 
         Parameters
         ----------
@@ -156,7 +159,6 @@ class CoExpressionNetwork(object):
                                       replace=False, size=self.num_samples*9/10)
         
         # Compute absolute value of Pearson's correlations between genes
-        # self.global_network = np.abs(np.corrcoef(np.transpose(self.refc_data)))
         self.global_network = np.abs(np.corrcoef(np.transpose(self.expression_data[sub_sample, :])))
 
         # Threshold the network
@@ -170,7 +172,7 @@ class CoExpressionNetwork(object):
         # Repeat 9 times:
         for r_idx in range(9):
             sub_sample = np.random.choice(range(self.num_samples),
-                                          replace=False, size=self.num_samples*5/10)
+                                          replace=False, size=self.num_samples*9/10)
             current_network = np.abs(np.corrcoef(np.transpose(self.expression_data[sub_sample, :])))
             current_network = np.where(current_network > threshold, current_network, 0)
             current_network[np.tril_indices(self.num_genes)] = 0
@@ -183,11 +185,12 @@ class CoExpressionNetwork(object):
             del current_network
 
         # Re-threshold to include only edges that were included at least half the time
-        self.global_network = np.where(self.global_network > 4, self.global_network, 0)
+        self.global_network = np.where(self.global_network > 4, 1, 0)
             
         sys.stdout.write("A global network of %d edges was constructed.\n" % \
                          np.count_nonzero(self.global_network))
 
+        
         # List non-zero indices (i.e edges)
         self.edges = np.nonzero(self.global_network)
         self.edges = np.array([self.edges[0], self.edges[1]], dtype='int').transpose()
@@ -198,6 +201,60 @@ class CoExpressionNetwork(object):
         sys.stdout.write("Co-expression network edges saved to %s\n" % out_path)
         
         
+    def create_global_network(self, threshold, out_path):
+        """ Create the global co-expression network **from the reference data**
+
+        This is done by computing, on the reference data, Pearson's correlation over the whole population
+        and then thresholding: an edge is kept if its weight (i.e. Pearson's correlation between the
+        expression of the 2 genes) is greater than the threshold in this network
+
+        Parameters
+        ----------
+        threshold: float
+            Thresholding value for including an edge in the network.
+        out_path: path
+            Where to store the edges of the global network
+
+        Modified attributes
+        -------------------
+        self.global_network: (self.num_genes, self.num_genes) array
+            Upper-triangular adjacency matrix of the global network.
+        self.num_edges: int
+            Number of edges of the global network.
+        self.edges: (self.num_edges, 2) array
+            List of edges of the global network.
+
+        Created files
+        -------------
+        out_path: 
+            Gzipped file containing the list of edges of the co-expression networks.
+            Each line is an undirected edge, formatted as:
+                <index of gene 1> <index of gene 2>
+            By convention, the index of gene 1 is smaller than that of gene 2.
+        """
+        # Compute absolute value of Pearson's correlations between genes
+        self.global_network = np.abs(np.corrcoef(np.transpose(self.refc_data)))
+
+        # Threshold the network
+        self.global_network = np.where((self.global_network > threshold),
+                                       self.global_network, 0)
+        
+        # Only keep the upper triangular matrix (it's symmetric)
+        self.global_network[np.tril_indices(self.num_genes)] = 0
+            
+        sys.stdout.write("A global network of %d edges was constructed.\n" % \
+                         np.count_nonzero(self.global_network))
+        
+        # List non-zero indices (i.e edges)
+        self.edges = np.nonzero(self.global_network)
+        self.edges = np.array([self.edges[0], self.edges[1]], dtype='int').transpose()
+        self.num_edges = self.edges.shape[0]
+        
+        # Save edges to file
+        np.savetxt(out_path, self.edges, fmt='%d')
+        sys.stdout.write("Co-expression network edges saved to %s\n" % out_path)
+
+
     def check_scale_free(self, plot_path=None):
         """ Compute the scale-free criteria (Zhang et al., 2005) for the global network.
 

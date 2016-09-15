@@ -137,7 +137,7 @@ def main():
         ######
 
         
-    if False:
+    if True:
     # Create the skeletons according to the procedure
         for repeat in range(args.num_repeats):
             sys.stdout.write("Computing network skeleton (repeat %d)\n" % repeat)
@@ -150,65 +150,68 @@ def main():
             # Create the network skeleton
             co_expression_net.create_global_network(THRESHOLD, out_path)
         
+    if True:
     # Compare the skeletons
-    # tanimotos = []
-    # for idx1 in range(args.num_repeats):
-    #     out_path_1 = "%s/edges_%d.gz" % (args.out_dir, idx1)
-    #     for idx2 in range(idx1+1, args.num_repeats):
-    #         out_path_2 = "%s/edges_%d.gz" % (args.out_dir, idx2)
-    #         tanimotos.append(overlap(out_path_1, out_path_2))
-    # print tanimotos
-    # print "Average tanimoto:", np.mean(tanimotos)
+        tanimotos = []
+        for idx1 in range(args.num_repeats):
+            out_path_1 = "%s/edges_%d.gz" % (args.out_dir, idx1)
+            for idx2 in range(idx1+1, args.num_repeats):
+                out_path_2 = "%s/edges_%d.gz" % (args.out_dir, idx2)
+                tanimotos.append(overlap(out_path_1, out_path_2))
+        #print tanimotos
+        print "Average tanimoto:", np.mean(tanimotos)
 
-    partial_not_full = [] # proportion of edges of partial network not in full network
-    full_not_partial = [] # proportion of edges of full network not in partial network
+    if True:
+    # Compare the skeletons to the full network
+        partial_not_full = [] # proportion of edges of partial network not in full network
+        full_not_partial = [] # proportion of edges of full network not in partial network
 
-    # Read full network into dictionary
-    edges_fname = "%s/edges.gz" % (args.out_dir)
-    edges_dict = {} # index_1:[index_2]
-    num_edges = 0
-    with gzip.open(edges_fname) as f:
-        for line in f:
-            num_edges += 1
-            ls = [int(x) for x in line.split()]
-            if not edges_dict.has_key(ls[0]):
-                edges_dict[ls[0]] = [ls[1]]
-            else:
-                edges_dict[ls[0]].append(ls[1])
-        f.close()
-
-        
-    # Compare networks built on partial data
-    for idx2 in range(args.num_repeats):
-        edges_fname_2 = "%s/edges_%d.gz" % (args.out_dir, idx2)
-        # Read second network
-        pnf = 0 # count edges in partial not full
-        num_edges_2 = 0
-
-        ref_edges_dict = copy.deepcopy(edges_dict)
-        
-        with gzip.open(edges_fname_2) as f:
+        # Read full network into dictionary
+        edges_fname = "%s/edges.gz" % (args.out_dir)
+        edges_dict = {} # index_1:[index_2]
+        num_edges = 0
+        with gzip.open(edges_fname) as f:
             for line in f:
-                num_edges_2 += 1
+                num_edges += 1
                 ls = [int(x) for x in line.split()]
-                try:
-                    ref_edges_dict[ls[0]].remove(ls[1])
-                except (KeyError, ValueError):
-                    # edge2 not in network1
-                    pnf += 1              
+                if not edges_dict.has_key(ls[0]):
+                    edges_dict[ls[0]] = [ls[1]]
+                else:
+                    edges_dict[ls[0]].append(ls[1])
             f.close()
-        pnf = float(pnf) / num_edges_2
 
-        nfp = float(np.sum([len(elist) for elist in ref_edges_dict.values()])) / num_edges
-        
-        print "pnf: %.3f" %  pnf,
-        print "nfp: %.3f" % nfp
 
-        partial_not_full.append(pnf)
-        full_not_partial.append(nfp)
+        # Compare networks built on partial data
+        for idx2 in range(args.num_repeats):
+            edges_fname_2 = "%s/edges_%d.gz" % (args.out_dir, idx2)
+            # Read second network
+            pnf = 0 # count edges in partial not full
+            num_edges_2 = 0
 
-    print "spurious edges from partial data:\t", np.mean(partial_not_full)
-    print "edges undetected from partial data:\t", np.mean(full_not_partial)
+            ref_edges_dict = copy.deepcopy(edges_dict)
+
+            with gzip.open(edges_fname_2) as f:
+                for line in f:
+                    num_edges_2 += 1
+                    ls = [int(x) for x in line.split()]
+                    try:
+                        ref_edges_dict[ls[0]].remove(ls[1])
+                    except (KeyError, ValueError):
+                        # edge2 not in network1
+                        pnf += 1              
+                f.close()
+            pnf = float(pnf) / num_edges_2
+
+            nfp = float(np.sum([len(elist) for elist in ref_edges_dict.values()])) / num_edges
+
+            print "pnf: %.3f" %  pnf,
+            print "nfp: %.3f" % nfp
+
+            partial_not_full.append(pnf)
+            full_not_partial.append(nfp)
+
+        print "spurious edges from partial data:\t%.3f" % np.mean(partial_not_full)
+        print "edges undetected from partial data:\t%.3f" % np.mean(full_not_partial)
 
 
         
