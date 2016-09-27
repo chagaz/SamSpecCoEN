@@ -482,18 +482,18 @@ class OuterCrossVal(object):
         with open(res_fname, 'w') as f:
             # Write number of selected features
             f.write("Number of features selected per fold:\t")
-            f.write("%s\n" % " ".join(["%d" % len(x) for x in ocv.features_list]))
+            f.write("%s\n" % " ".join(["%d" % len(x) for x in self.features_list]))
 
             # Write AUC
-            f.write("AUC:\t%.2f\n" % ocv.compute_auc())
+            f.write("AUC:\t%.2f\n" % self.compute_auc())
 
             # Write the stability (Fisher overlap)
-            fov_list = ocv.compute_fisher_overlap()
+            fov_list = self.compute_fisher_overlap()
             f.write("Stability (Fisher overlap):\t")
             f.write("%s\n" % ["%.2e" % x for x in fov_list])
 
             # Write the stability (consistency index)
-            cix_list = ocv.compute_consistency()
+            cix_list = self.compute_consistency()
             f.write("Stability (Consistency Index):\t")
             f.write("%s\n" % ["%.2e" % x for x in cix_list])
             f.close()
@@ -627,23 +627,24 @@ def main():
 
 
         # ========= l1/l2 regularization =========
-        # Run the experiment
-        ocv.run_outer_enet_logreg()
+        else:
+            # Run the experiment
+            ocv.run_outer_enet_logreg()
 
-        # Create results dir if it does not exist
-        results_dir = '%s/enet' % args.results_dir
-        if not os.path.isdir(results_dir):
-            sys.stdout.write("Creating %s\n" % results_dir)
-            try: 
-                os.makedirs(results_dir)
-            except OSError:
-                if not os.path.isdir(results_dir):
-                    raise
+            # Create results dir if it does not exist
+            results_dir = '%s/enet' % args.results_dir
+            if not os.path.isdir(results_dir):
+                sys.stdout.write("Creating %s\n" % results_dir)
+                try: 
+                    os.makedirs(results_dir)
+                except OSError:
+                    if not os.path.isdir(results_dir):
+                        raise
 
-        print "Number of features:\t", [len(x) for x in ocv.features_list]
-        print "AUC:\t", ocv.compute_auc()
+            print "Number of features:\t", [len(x) for x in ocv.features_list]
+            print "AUC:\t", ocv.compute_auc()
 
-        ocv.write_results(results_dir)
+            ocv.write_results(results_dir)
         # ========= End l1/l2 regularization =========
 
     

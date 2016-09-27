@@ -123,12 +123,13 @@ def main():
 
         
         # ========= l1/l2-regularized logistic regression =========
-        results_dir = 'args.results_dir/enet'
-        # Read outputs from inner cross-validation experiments
-        ocv.read_inner_results(results_dir)
+        else:
+            results_dir = 'args.results_dir/enet'
+            # Read outputs from inner cross-validation experiments
+            ocv.read_inner_results(results_dir)
 
-        # Write results
-        ocv.write_results(results_dir)
+            # Write results
+            ocv.write_results(results_dir)
         # ========= End l1/l2-regularized logistic regression =========
 
     

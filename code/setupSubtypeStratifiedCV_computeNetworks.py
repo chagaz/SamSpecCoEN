@@ -27,25 +27,25 @@ def main():
     The data will be stored under
         $DATA_DIR/outputs/U133A_combat_RFS/subtype_stratified/repeat<repeat idx>
     with the following structure:
-        edges.gz: 
-            Gzipped file containing the list of edges of the co-expression networks.
-            Each line is an undirected edge, formatted as:
-                <index of gene 1> <index of gene 2>
-            By convention, the index of gene 1 is smaller than that of gene 2.
         For k=1..numFolds:
-            <k>/lioness/edge_weights.gz:
+            fold<k>/edges.gz: 
+                Gzipped file containing the list of edges of the co-expression networks.
+                Each line is an undirected edge, formatted as:
+                    <index of gene 1> <index of gene 2>
+            By convention, the index of gene 1 is smaller than that of gene 2.
+            fold<k>/lioness/edge_weights.gz:
                 gzipped file containing the (self.numSamples, numEdges) array
                 describing the edge weights of the LIONESS co-expression networks
                 for the training samples.
-            <k>/lioness/edge_weights_te.gz:
+            fold<k>/lioness/edge_weights_te.gz:
                 gzipped file containing the (self.numSamples, numEdges) array
                 describing the edge weights of the LIONESS co-expression networks
                 for the test samples.
-            <k>/regline/edge_weights.gz:
+            fold<k>/regline/edge_weights.gz:
                 gzipped file containing the (self.numSamples, numEdges) array
                 describing the edge weights of the Regline co-expression networks
                 for the training samples.
-            <k>/regline/edge_weights_te.gz:
+            fold<k>/regline/edge_weights_te.gz:
                 gzipped file containing the (self.numSamples, numEdges) array
                 describing the edge weights of the Regline co-expression networks
                 for the test samples.
@@ -61,40 +61,41 @@ def main():
     parser = argparse.ArgumentParser(description="Build sample-specific co-expression networks" + \
                                      "for a 10-fold sub-type stratified CV on the RFS data",
                                      add_help=True)
-    parser.add_argument("fold", help="Index of the fold", type=int)
     parser.add_argument("repeat", help="Index of the repeat", type=int)
+    parser.add_argument("fold", help="Index of the fold", type=int)
+    parser.add_argument("-r", "--refc_dir",
+                        help="Reference data for network construction")
     args = parser.parse_args()
 
-    outDir = '%s/outputs/U133A_combat_RFS/subtype_stratified/repeat%d' % (DATA_DIR, args.repeat)
+    out_dir = '%s/outputs/U133A_combat_RFS/subtype_stratified/repeat%d' % (DATA_DIR, args.repeat)
 
     # Get expression data, sample labels.
     # Do not normalize the data while loading it (so as not to use test data for normalization).
     f = h5py.File("%s/ACES/experiments/data/U133A_combat.h5" % DATA_DIR)
-    expressionData = np.array(f['U133A_combat_RFS']['ExpressionData'])
-    sampleLabels = np.array(f['U133A_combat_RFS']['PatientClassLabels'])
+    expression_data = np.array(f['U133A_combat_RFS']['ExpressionData'])
+    sample_labels = np.array(f['U133A_combat_RFS']['PatientClassLabels'])
     f.close()
     
-    foldNr = args.fold
+    fold_nr = args.fold
     # Output directory
-    foldDir = "%s/fold%d" % (outDir, foldNr)
+    fold_dir = "%s/fold%d" % (out_dir, fold_nr)
 
     # Read train indices from file
-    trIndicesF = '%s/train.indices' % foldDir
-    trIndices = np.loadtxt(trIndicesF, dtype=int)
-    sys.stdout.write("Read training indices for fold %d from %s\n" % (foldNr, trIndicesF))
+    tr_indices_f = '%s/train.indices' % fold_dir
+    tr_indices = np.loadtxt(tr_indices_f, dtype=int)
+    sys.stdout.write("Read training indices for fold %d from %s\n" % (fold_nr, tr_indices_f))
 
     # Read test indices from file
-    teIndicesF = '%s/test.indices' % foldDir
-    teIndices = np.loadtxt(teIndicesF, dtype=int)
-    sys.stdout.write("Read training indices for fold %d from %s\n" % (foldNr, teIndicesF))
-    print teIndices
-    print teIndices.shape
+    te_indices_f = '%s/test.indices' % fold_dir
+    te_indices = np.loadtxt(te_indices_f, dtype=int)
+    sys.stdout.write("Read training indices for fold %d from %s\n" % (fold_nr, te_indices_f))
+    print te_indices
+    print te_indices.shape
 
     # Create networks
-    CoExpressionNetwork.run_whole_data(expressionData, sampleLabels, foldDir,
-                                       trIndices=trIndices, teIndices=teIndices)
-
-
+    CoExpressionNetwork.run_whole_data(expression_data, sample_labels, fold_dir,
+                                       reference_data=args.refc_dir,
+                                       tr_indices=tr_indices, te_indices=te_indices)
 
 if __name__ == "__main__":
     main()
