@@ -6,18 +6,21 @@
 import argparse
 import h5py
 import matplotlib.pyplot as plt
-import memory_profiler # call program with flag -m memory_profiler
+# import memory_profiler # call program with flag -m memory_profiler
 import numpy as np
 import os
 import sys
 import timeit
 
-sys.path.append('../ACES')
+sys.path.append('../ACES/')
+sys.path.append('/share/data40T/chloe/SamSpecCoEN/ACES/')
 from datatypes.ExpressionDataset import HDF5GroupToExpressionDataset, MakeRandomFoldMap
 
 import utils
 
 THRESHOLD = 0.6 # threshold for correlation values
+
+plot_regline = False # turn to True to visualize the cloud of points (gene 1 vs gene 2)
 
 orange_color = '#d66000'
 blue_color = '#005599'
@@ -41,6 +44,8 @@ class CoExpressionNetwork(object):
 
     Optional attributes
     ------------------
+    refc_data: (num_refc_samples, num_genes) array
+        Array of reference gene expression data.
     num_te_samples: {int, None}, optional
         Number of samples used for testing.    
     tr_indices: {(num_tr_samples, ) array, None}, optional
@@ -61,7 +66,8 @@ class CoExpressionNetwork(object):
             <index of gene 1> <index of gene 2>
         By convention, the index of gene 1 is smaller than that of gene 2.
     """
-    def __init__(self, expression_data, sample_labels, tr_indices=None, te_indices=None):
+    def __init__(self, expression_data, sample_labels, tr_indices=None,
+                 te_indices=None, refc_data=None):
         """
         Parameters
         ----------
@@ -73,11 +79,14 @@ class CoExpressionNetwork(object):
             1D array of training indices, if any.
         te_indices: {(self.num_te_samples, ) array, None}, optional
             1D array of test indices, if any.
+        refc_expression_data: (self.num_refc_samples, self.num_genes) array
+            Array of reference gene expression data.
         """
         self.expression_data = expression_data#[:, :800] # TODO Only for testing!
         self.sample_labels = sample_labels
         self.tr_indices = tr_indices
         self.te_indices = te_indices
+        self.refc_data = refc_data
 
         # It does not make sense to have test indices but not train indices
         # Only train indices can be used to work on a subset of the data.
@@ -98,6 +107,16 @@ class CoExpressionNetwork(object):
             self.sample_labels = self.sample_labels[self.tr_indices]
 
         self.num_samples, self.num_genes = self.expression_data.shape
+
+        # Check the reference and actual data do match 
+        if isinstance(self.refc_data, np.ndarray):
+            self.num_refc_samples, num_genes = self.refc_data.shape
+            try:
+                assert num_genes == self.num_genes
+            except AssertionError:
+                sys.stderr.write("Number of genes between reference and data does not match.\n")
+                sys.stderr.write("Aborting.\n")
+                sys.exit(-1)        
 
         self.global_network = None
         self.edges = None
@@ -146,7 +165,70 @@ class CoExpressionNetwork(object):
         xn = self.expression_data[np.where(np.logical_not(self.sample_labels))[0], :]
         
         # Compute Pearson's correlation, gene by gene
-        self.global_network = np.corrcoef(np.transpose(self.expression_data))
+        self.global_network = np.abs(np.corrcoef(np.transpose(self.expression_data)))
+
+        # Threshold the network
+        self.global_network = np.where(np.logical_or(np.logical_or(self.global_network > threshold,
+                                                                  np.abs(np.corrcoef(np.transpose(xn))) > threshold),
+                                                    np.abs(np.corrcoef(np.transpose(xp))) > threshold),
+                                      self.global_network, 0)
+
+        # Only keep the upper triangular matrix (it's symmetric)
+        self.global_network[np.tril_indices(self.num_genes)] = 0
+        
+        sys.stdout.write("A global network of %d edges was constructed.\n" % \
+                         np.count_nonzero(self.global_network))
+
+        # Save edges to file
+        edges_f = '%s/edges.gz' % out_path
+
+        # List non-zero indices (i.e edges)
+        self.edges = np.nonzero(self.global_network)
+        self.edges = np.array([self.edges[0], self.edges[1]], dtype='int').transpose()
+        self.num_edges = self.edges.shape[0]
+        
+        # Save edges to file
+        np.savetxt(edges_f, self.edges, fmt='%d')
+        sys.stdout.write("Co-expression network edges saved to %s\n" % edges_f)
+        
+        
+    def create_global_network_from_reference(self, threshold, out_path):
+        """ Create the global (population-wise) co-expression network from reference data.
+
+        This is done by computing (on the training set if any) Pearson's correlation over:
+        - the whole population
+        - the positive samples
+        - the negative samples
+        and then thresholding.
+        An edge is kept if its weight (i.e. Pearson's correlation between the expression of the 2 genes)
+        is greater than the threshold in any of the three networks.
+
+        Parameters
+        ----------
+        threshold: float
+            Thresholding value for including an edge in the network.
+        out_path: path
+            Where to store the edges of the global network
+
+        Modified attributes
+        -------------------
+        self.global_network: (self.num_genes, self.num_genes) array
+            Upper-triangular adjacency matrix of the global network.
+        self.num_edges: int
+            Number of edges of the global network.
+        self.edges: (self.num_edges, 2) array
+            List of edges of the global network.
+
+        Created files
+        -------------
+        out_path/edges.gz: 
+            Gzipped file containing the list of edges of the co-expression networks.
+            Each line is an undirected edge, formatted as:
+                <index of gene 1> <index of gene 2>
+            By convention, the index of gene 1 is smaller than that of gene 2.
+        """       
+        # Compute Pearson's correlation, gene by gene
+        self.global_network = np.abs(np.corrcoef(np.transpose(self.refc_data)))
 
         # Threshold the network
         self.global_network = np.where(np.logical_or(np.logical_or(self.global_network > threshold,
@@ -222,7 +304,7 @@ class CoExpressionNetwork(object):
         connectivities = np.round(np.sum(self.global_network + self.global_network.transpose(), axis=1))
 
         # Compute number of nodes that have at least one neighnor
-        nnodes = np.shape(np.nonzero(connectvities))[1]
+        nnodes = np.shape(np.nonzero(connectivities))[1]
         print "%s genes in the network" % nnodes
 
         # Compute mean network connectivity
@@ -248,16 +330,16 @@ class CoExpressionNetwork(object):
         # Compute r2 from residuals
         r2 = 1 - residuals[0] / (l_freq_k.size * l_freq_k.var())
         
-        # Regression plot
-        fig = plt.figure()
-        plt.plot(l_k_values, l_freq_k, "+", color=blue_color)
-        plt.plot(l_k_values, k_w[0]*l_k_values + k_w[1], '-', color=orange_color)
-        if plot_path:
-            fig.savefig(plot_path)
-            sys.stdout.write("Scale-free check regression plot saved to %s\n" % plot_path)
-        sys.stdout.write("Check visually that the relationship between log10(connectivities) " +\
-                         " and log10(freq(connectivities)) is approximately linear\n")
-        plt.show()
+        # # Regression plot
+        # fig = plt.figure()
+        # plt.plot(l_k_values, l_freq_k, "+", color=blue_color)
+        # plt.plot(l_k_values, k_w[0]*l_k_values + k_w[1], '-', color=orange_color)
+        # if plot_path:
+        #     fig.savefig(plot_path)
+        #     sys.stdout.write("Scale-free check regression plot saved to %s\n" % plot_path)
+        # sys.stdout.write("Check visually that the relationship between log10(connectivities) " +\
+        #                  " and log10(freq(connectivities)) is approximately linear\n")
+        # plt.show()
         
         return aveConn, slope, r2
 
@@ -270,20 +352,28 @@ class CoExpressionNetwork(object):
         -------------------
         self.expression_data:
             self.expression_data is replaced with its normalized version.
+        self.refc_data:
+            self.refc_data is replaced with its normalized version.
         self.te_expression_data:
             If te_indices, self.te_expression_data is  replaced with its normalized version,
             using the normalization parameters computed on self.tr_expression_data.       
         """
+        # Normalize refc data
+        if self.refc_data:
+            x_mean = np.mean(self.refc_data, axis=0)
+            x_stdv = np.std(self.refc_data, axis=0, ddof=1)
+            self.refc_data -= x_mean
+            self.refc_data /= x_stdv        
 
-        xMean = np.mean(self.expression_data, axis=0)
+        x_mean = np.mean(self.expression_data, axis=0)
         x_stdv = np.std(self.expression_data, axis=0, ddof=1)
-        self.expression_data -= xMean
+        self.expression_data -= x_mean
         self.expression_data /= x_stdv
         if isinstance(self.te_indices, np.ndarray):
             # also normalize self.te_expression_data
-            print self.te_expression_data.shape
-            print xMean.shape
-            self.te_expression_data -= xMean
+            # print self.te_expression_data.shape
+            # print x_mean.shape
+            self.te_expression_data -= x_mean
             self.te_expression_data /= x_stdv
             
 
@@ -352,7 +442,7 @@ class CoExpressionNetwork(object):
         
         
             
-    def create_sam_specRegline(self, regline_path):
+    def create_sam_spec_regline(self, regline_path):
         """ Create sample-specific co-expression networks,
         using the REGLINE approach.
 
@@ -392,15 +482,46 @@ class CoExpressionNetwork(object):
             weights_te = np.ones((self.num_edges, self.num_te_samples))
 
         for (edge_idx, e) in enumerate(self.edges):
+            if plot_regline:
+                print "edge", e[0], e[1]
             # Fit regression line
             reg_w = np.linalg.lstsq(np.array([ self.expression_data[:, e[0]],
                                               np.ones(self.num_samples) ]).transpose(),
                                    self.expression_data[:, e[1]])[0]
+            if plot_regline:
+                print reg_w[0], reg_w[1]
 
-            # Compute distance from sample to line:
+            # Compute distances from samples to line:
             weights[edge_idx, :] = np.abs(reg_w[0]*self.expression_data[:, e[0]] - \
                                           self.expression_data[:, e[1]] + reg_w[1]) / \
                 np.sqrt(reg_w[0]**2+1)
+            if plot_regline:
+                print "max weight", np.max(weights[edge_idx, :])
+                print np.where(weights[edge_idx, :]==np.max(weights[edge_idx, :]))
+                s_idx = np.where(weights[edge_idx, :]==np.max(weights[edge_idx, :]))[0][0]
+                print "s_idx", s_idx
+                print "distance", weights[edge_idx, s_idx]
+
+                plt.figure(figsize=(5, 5))
+                plt.scatter(self.expression_data[:, e[0]], self.expression_data[:, e[1]],
+                            marker="+")
+                plt.plot([-5, 5], [(reg_w[0]*(-5) + reg_w[1]),
+                                   (reg_w[0]*(5) + reg_w[1])])
+            
+                x0 = self.expression_data[s_idx, e[0]]
+                y0 = self.expression_data[s_idx, e[1]]
+                plt.scatter(x0, y0, color='orange', marker="o")                        
+                a = (reg_w[0] * (y0 - reg_w[1]) + x0)/(1 + reg_w[0]**2)
+                b = (reg_w[1] + reg_w[0] * (x0 + reg_w[0] * y0))/(1 + reg_w[0]**2)
+                plt.plot([x0, a], [y0, b], ls='-', color='orange')
+                plt.text(0.5*(x0+a), 0.5*(y0+b), 'd', color='orange')
+
+                print "x0", x0, "\ty0", y0, "\ta", a, "\tb", b
+
+                plt.axis([-5, 5, -5, 5])
+                plt.show()
+                sys.exit(0)
+
             if isinstance(self.te_indices, np.ndarray):
                 weights_te[edge_idx, :] = np.abs(reg_w[0]*self.te_expression_data[:, e[0]] - \
                                                 self.te_expression_data[:, e[1]] + reg_w[1]) / \
@@ -416,7 +537,9 @@ class CoExpressionNetwork(object):
             sys.stdout.write("Regline edge weights (test data) saved to %s\n" % weights_te_f)
 
             
-def run_whole_data(expression_data, sample_labels, out_dir, tr_indices=None, te_indices=None):
+def run_whole_data(expression_data, sample_labels, out_dir,
+                   reference_data=None,
+                   tr_indices=None, te_indices=None):
     """ Build sample-specific co-expression networks.
 
     If tr_indices is not None, use tr_indices and te_indices to determine train/test samples
@@ -428,6 +551,8 @@ def run_whole_data(expression_data, sample_labels, out_dir, tr_indices=None, te_
     expression_data: (num_samples, num_genes) array
         Array of gene expression data.
         If there is training data, this is ONLY the training data.
+    reference_data: (num_refc_samples, num_genes) array
+        Array of reference gene expression data.
     sample_labels: (num_samples, ) array
         Labels for the whole data.
     out_dir: path
@@ -466,7 +591,8 @@ def run_whole_data(expression_data, sample_labels, out_dir, tr_indices=None, te_
     # Create CoExpressionNetwork instance
     if not isinstance(tr_indices, np.ndarray):
         sys.stdout.write("Computing networks on whole data\n")
-        co_expression_net = CoExpressionNetwork(expression_data, sample_labels)
+        co_expression_net = CoExpressionNetwork(expression_data, sample_labels,
+                                                refc_data=reference_data)
     else:
         sys.stdout.write("Computing networks on train / test data\n")
         co_expression_net = CoExpressionNetwork(expression_data, sample_labels,
@@ -485,15 +611,16 @@ def run_whole_data(expression_data, sample_labels, out_dir, tr_indices=None, te_
     print "Slope (should be close to -1): ", slope
     print "R2 (should be larger than 0.8)", r2
      
-    # Create repertory in which to store co-expression networks (LIONESS)
-    lioness_path = "%s/lioness" % out_dir
-    try: 
-        os.makedirs(lioness_path)
-    except OSError:
-        if not os.path.isdir(lioness_path):
-            raise
+    # # Create repertory in which to store co-expression networks (LIONESS)
+    # lioness_path = "%s/lioness" % out_dir
+    # try: 
+    #     os.makedirs(lioness_path)
+    # except OSError:
+    #     if not os.path.isdir(lioness_path):
+    #         raise
+
     # Build and store co-expression networks (LIONESS)
-    co_expression_net.create_sam_spec_lioness(lioness_path)
+    # co_expression_net.create_sam_spec_lioness(lioness_path)
     # # (Uncomment to) Time the creation of LIONESS co-expression networks
     # exec_time = timeit.timeit(utils.wrapper(co_expression_net.create_sam_spec_lioness, lioness_path),
     #                          number=10)
@@ -509,15 +636,17 @@ def run_whole_data(expression_data, sample_labels, out_dir, tr_indices=None, te_
             raise
 
     # Build and store co-expression networks (REGLINE)
-    co_expression_net.create_sam_specRegline(regline_path)
+    co_expression_net.create_sam_spec_regline(regline_path)
     # # (Uncomment to) Time the creation of REGLINE co-expression networks
-    # exec_time = timeit.timeit(utils.wrapper(co_expression_net.create_sam_specRegline, regline_path),
+    # exec_time = timeit.timeit(utils.wrapper(co_expression_net.create_sam_spec_regline, regline_path),
     #                          number=10)
     # sys.stdout.write("Regline network created in %.2f seconds (averaged over 10 repeats)\n" % \
     #                  (exec_time/10))
 
     
-def run_whole_data_aces(acesData, out_dir, tr_indices=None, te_indices=None):
+def run_whole_data_aces(aces_data, out_dir,
+                        refc_data=None,
+                        tr_indices=None, te_indices=None):
     """ Build sample-specific co-expression networks, from data in ACES format.
 
     If tr_indices is not None, use tr_indices and te_indices to determine train/test samples
@@ -526,8 +655,10 @@ def run_whole_data_aces(acesData, out_dir, tr_indices=None, te_indices=None):
 
     Parameters
     ----------
-    acesData: datatypes.ExpressionDataset.ExpressionDataset
+    aces_data: datatypes.ExpressionDataset.ExpressionDataset
         Data in ACES format, read using HDF5GroupToExpression_dataset.
+    refc_data: (num_refc_samples, num_genes) array
+        Reference gene expression data.    
     out_dir: path
         Path of the repository where to store the generated networks.
 
@@ -561,16 +692,21 @@ def run_whole_data_aces(acesData, out_dir, tr_indices=None, te_indices=None):
         describing the edge weights  of the Regline co-expression networks
         for each test sample.   
     """
-    run_whole_data(acesData.expressionData, acesData.patientClassLabels, out_dir, tr_indices, te_indices)
+    run_whole_data(aces_data.expressionData, aces_data.patientClassLabels, out_dir,
+                   reference_data=refc_data,
+                   tr_indices=tr_indices, te_indices=te_indices)
 
 
-def run_crossval_data_aces(acesData, out_dir, num_folds):
+def run_crossval_data_aces(aces_data, out_dir, num_folds,
+                           refc_data=None):
     """ Build sample-specific co-expression networks, in a cross-validation setting.
 
     Parameters
     ----------
-    acesData: datatypes.ExpressionDataset.ExpressionDataset
+    aces_data: datatypes.ExpressionDataset.ExpressionDataset
         Data in ACES format, read using HDF5GroupToExpression_dataset.
+    refc_data: (num_refc_samples, num_genes) array
+        Reference gene expression data.    
     out_dir: path
         Path of the repository where to store the generated networks.
     num_folds: int
@@ -613,7 +749,7 @@ def run_crossval_data_aces(acesData, out_dir, num_folds):
             for the test samples.
     """
     # Split the data
-    foldMap = MakeRandomFoldMap(acesData, num_folds, 1)
+    foldMap = MakeRandomFoldMap(aces_data, num_folds, 1)
     
     for fold_nr in range(num_folds):
         # Get training and test indices
@@ -640,18 +776,19 @@ def run_crossval_data_aces(acesData, out_dir, num_folds):
 
         # Save train labels to file
         tr_labels_f = '%s/train.labels' % fold_dir
-        np.savetxt(tr_labels_f, np.array(acesData.patientClass_labels[tr_indices], dtype='int'),
+        np.savetxt(tr_labels_f, np.array(aces_data.patientClass_labels[tr_indices], dtype='int'),
                    fmt='%d')
         sys.stdout.write("Wrote training labels for fold %d to %s\n" % (fold_nr, tr_labels_f))
 
         # Save test labels to file
         te_labels_f = '%s/test.labels' % fold_dir
-        np.savetxt(te_labels_f, np.array(acesData.patientClass_labels[te_indices], dtype='int'),
+        np.savetxt(te_labels_f, np.array(aces_data.patientClass_labels[te_indices], dtype='int'),
                    fmt='%d')
         sys.stdout.write("Wrote test labels for fold %d to %s\n" % (fold_nr, te_labels_f))
 
         # Create the networks
-        run_whole_data(acesData.expression_data, acesData.patientClass_labels, fold_dir,
+        run_whole_data(aces_data.expression_data, aces_data.patientClass_labels, fold_dir,
+                       reference_data=refc_data,
                        tr_indices=tr_indices, te_indices=te_indices)
 
         
@@ -663,9 +800,14 @@ def main():
     """
     parser = argparse.ArgumentParser(description="Build sample-specific co-expression networks",
                                      add_help=True)
-    parser.add_argument("dataset_name", help="Dataset name")
-    parser.add_argument("out_dir", help="Where to store generated networks")
-    parser.add_argument("-k", "--num_folds", help="Number of cross-validation folds", type=int)
+    parser.add_argument("dataset_name",
+                        help="Dataset name")
+    parser.add_argument("out_dir",
+                        help="Where to store generated networks")
+    parser.add_argument("-k", "--num_folds", type=int,
+                        help="Number of cross-validation folds")
+    parser.add_argument("-r", "--refc_dir",
+                        help="Reference data for network construction")
     args = parser.parse_args()
 
     try:
@@ -692,16 +834,35 @@ def main():
     # Get expression data, sample labels.
     # Do not normalize the data while loading it (so as not to use test data for normalization).
     f = h5py.File("../ACES/experiments/data/U133A_combat.h5")
-    acesData = HDF5GroupToExpressionDataset(f['U133A_combat_%s' % args.dataset_name],
+    aces_data = HDF5GroupToExpressionDataset(f['U133A_combat_%s' % args.dataset_name],
                                             checkNormalise=False)
     f.close()
 
+    # Reference expression data
+    if args.refc_dir:
+        f = h5py.File("%s/MTAB-62.h5" % args.refc_dir)
+        refc_data = HDF5GroupToExpressionDataset(f['MTAB-62'], checkNormalise=False)
+        f.close()
+
+        # Reorder reference data so that genes map those in ACES data
+        aces_gene_names = aces_data.geneLabels
+        refc_gene_names = refc_data.geneLabels
+        refc_gene_names = list(refc_gene_names)
+        refc_gene_names_dict = dict([(a, ix) for ix, a in enumerate(refc_gene_names)]) # name:idx
+        reordered_genes = [refc_gene_names_dict[a] for a in aces_gene_names]
+        refc_reordered = np.array(refc_data.expressionData)
+        for ix in range(refc_data.expressionData.shape[1]):
+            refc_reordered[:, ix] = refc_data.expressionData[:, reordered_genes[ix]]
+    else:
+        refc_reordered=None
+
+        
     if not args.num_folds:
-        # Compute networks on whole data 
-        run_whole_data_aces(acesData, args.out_dir)
+        # Compute networks on whole data
+        run_whole_data_aces(aces_data, args.out_dir, refc_data=refc_reordered)
     else:
         # Create cross-validation folds and compute networks on them
-        run_crossval_data_aces(acesData, args.out_dir, args.num_folds)
+        run_crossval_data_aces(aces_data, args.out_dir, args.num_folds, refc_data=refc_reordered)
     
 
 if __name__ == "__main__":
