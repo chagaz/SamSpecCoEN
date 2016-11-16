@@ -14,13 +14,23 @@ Edge weights reflect the sample's contribution to the population-wide correlatio
 Related work:  
 LIONESS [Kuijjer et al., 2015]: For a given sample, an edge-weight is the contribution of this sample to the global correlation.  
 
-Propositions:
-1. REGLINE: For a given sample, the edge-weight is the distance of that sample to the regression line fitting the expression of both genes. This quantifies how much this sample deviates from the population-wide behaviour.  
 
 Data:
-This code is meant to be used on the ACES gene expression data [Staiger et al., 2013].  
+This code is meant to be used on the ACES gene expression data [Staiger et al., 2013].  In this data set, the expression level of each gene is given *relative to the mean expression of the gene in the entire data set*: 
 
-Evaliation:
+x^i_j = \log\left( \frac{I^i_j}{\frac{1}{n} \sum{u=1}^n I^u_j} \right\)
+
+where I^i_j is the intensity of probe j (corresponding to gene j) for sample i.
+
+Propositions:
+
+
+1. REGLINE: For a given sample, the edge weight is the distance of that sample to the regression line fitting the expression of both genes, *on a healthy reference population*. This quantifies how much this sample deviates from the "normal" behaviour.  
+2. SUM: For a given sample, the weight of edge (x_1, x_2) is x_1+x_2.
+3. EUCLIDE: For a given sample, the weight of edge (x_1, x_2) is the Euclidean distance between x_1 and x_2.
+4. EUCLTHR: For a given sample, the weight of edge (x_1, x_2) is the Euclidean distance between x_1 and x_2, unless x_1 or x_2 is negative, in which case it is 0. (Rationale: the edge can't be "on" if one of the genes is underexpressed).
+
+Evaluation:
 While one of the goals here is to use network-specific algorithms, at first we want to see whether we can build edge weights that are at least as expressive as node weights (that is to say, gene expression levels). We quantify this by cross-validated performance of a L1-regularized logistic regression trained on these weights.
 
 Requirements
@@ -88,6 +98,14 @@ The `--nodes` option allows you to run the exact same algorithm on the exact sam
 The `--sfan` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan). This will also run an l2-regularized logistic regression only on the nodes that are connected in the network (i.e. not using sfan at all).
 
 The `--enet` option allows you to run an elastic net (l1/l2 regularization). Currently, it uses scikit-learn's implementation, which has some issues. This should be re-implemented using [spams](http://spams-devel.gforge.inria.fr/) or [L1L2py](https://pypi.python.org/pypi/L1L2Py/1.0.5). 
+
+
+Task list
+=========
+- [] Test the implementation of `sum`, `euclide` and `euclthr`
+- [] Implement the bits that read and process the given network (.sif) in `CoExpressionNetwork.py`
+- [] Compare the performance of the l1-regularized subtype-stratified cross-validation using the various edge weights as features to that of using directly the gene expression levels as features.
+- [] Implement the `--enet` option with [spams](http://spams-devel.gforge.inria.fr/) or [L1L2py](https://pypi.python.org/pypi/L1L2Py/1.0.5). 
 
 
 
