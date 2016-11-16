@@ -5,18 +5,23 @@ Build sample-specific co-expression networks.
 Overview
 ========
 The goal of this code is to build sample-specific co-expression networks: 
-All samples have the same network *structure*, but edge weights depend on the sample.
-The co-expression networks are built from Pearson's correlation between gene expressions.
-Each individual weights reflects the sample's contribution/deviation from this population-wide correlation.
+All samples have the same network *structure*, but edge *weights* depend on the sample.
 
-The two options are:  
-1. LIONESS [Kuijjer et al., 2015]: For a given sample, an edge-weight is the contribution of this sample to the global correlation.  
-2. For a given sample, the edge-weight is the distance of that sample to the regression line fitting the expression of both genes. This quantifies how much this sample deviates from the population-wide behaviour.  
+To do this, we combine an existing network structure, given by a PPI network, with gene expression data.
 
-We also use ideas from [Zhang and Horvath, 2005] to build the global (population-wide) network, i.e. that a co-expression network should be approximately scale-free.  
+Edge weights reflect the sample's contribution to the population-wide correlation, its deviation from the control correlation, or whether this edge can be considered active or not.
 
+Related work:  
+LIONESS [Kuijjer et al., 2015]: For a given sample, an edge-weight is the contribution of this sample to the global correlation.  
+
+Propositions:
+1. REGLINE: For a given sample, the edge-weight is the distance of that sample to the regression line fitting the expression of both genes. This quantifies how much this sample deviates from the population-wide behaviour.  
+
+Data:
 This code is meant to be used on the ACES gene expression data [Staiger et al., 2013].  
 
+Evaliation:
+While one of the goals here is to use network-specific algorithms, at first we want to see whether we can build edge weights that are at least as expressive as node weights (that is to say, gene expression levels). We quantify this by cross-validated performance of a L1-regularized logistic regression trained on these weights.
 
 Requirements
 ============
@@ -30,10 +35,17 @@ Python packages
 
 ACES
 ----
+This is the breast cancer gene expression data we want to classify (according to recurrence-free vs. not-recurrence-free after five years). It also contains several PPI networks.
 * Download from [http://ccb.nki.nl/software/aces/](http://ccb.nki.nl/software/aces/)
 * untar in this (SamSpecCoEN) directory
 * add an empty file __init__.py under ACES/experiments
 * make sure to have the required Python packages (in particular, xlrd)
+
+ArrayExpress E-MTAB-62
+----------------------
+This is a reference healthy population data.
+* Download from [https://www.ebi.ac.uk/arrayexpress/experiments/E-MTAB-62/](ArrayExpress)
+* Store under ArrayExpress/ at the root of this repository
 
 Usage
 =====
@@ -42,154 +54,41 @@ Creating sample-specific co-expression networks
 
 The class for creating sample-specific co-expression neworks is `CoExpressionNetwork.py`. It can be used in the following manner:
 
-### Networks for a single data set
-```python CoExpressionNetwork.py DMFS outputs/U133A_combat_DMFS```
-creates sample-specific coexpression networks for the entire dataset. The network structure (list of edges) is stored under `outputs/U122A_combat_DMFS/edges.gz` and its weights under `outputs/U122A_combat_DMFS/lioness/edges_weights.gz` (for the LIONESS approach) or `outputs/U122A_combat_DMFS/regline/edges_weights.gz` (for the regression line approach).
+`python CoExpressionNetwork.py RFS ../ACES/experiments/data/KEGG_edges1210.sif ../ArrayExpress/postproc/MTAB-62.h5 ../outputs/U133A_combat_RFS`
 
-### Networks in a cross-validation setting
-```python CoExpressionNetwork.py DMFS outputs/U133A_combat_DMFS -k 5```
-creates 5 folds for cross-validation. The network structure (list of edges) is stored under `outputs/U122A_combat_DMFS/edges.gz` and its weights, for each fold from k=0 to k=4, under `outputs/U122A_combat_DMFS/<k>/lioness/edges_weights.gz` (for the LIONESS approach) or `outputs/U122A_combat_DMFS/<k>/regline/edges_weights.gz` (for the regression line approach). 
-
-`outputs/U122A_combat_DMFS/<k>` also contains training and test indices and labels.
-
-### Networks in a subtype-stratified cross-validation setting
-In order to evaluate the expressiveness of the representation of samples by their sample-specific co-expression network, we use a subtype-stratified cross-validation setting similar to that described in [Allahyar & de Ridder, 2015].
-
-To create the corresponding data folds and networks:
-```
-data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified
-aces_dir=data/SamSpecCoEN/ACES # downloaded from http://ccb.nki.nl/software/aces/
-for repeat in {0..9}
-do
-    python setupSubtypeStratifiedCV_writeIndices.py data/SamSpecCoEN ${repeat}
-done
-
-for repeat in {0..9}
-do
-    for fold in {0..9}
-    do
-	    python setupCV_computeNetworks.py ${aces_dir} ${data_dir} ${fold} ${repeat}
-    done
-done
-```
-This process can easily be parallelized.
-
-**Warning** Note that for one repeat and fold, the networks take about 450 Mo of space, meaning that for 10 folds, 10 repeats, you need 43 Go of space to store the data. 
-
-### Networks in a sampled leave-one-study-out cross-validation setting
-We use a sampled leave-one-study-out cross-validation setting similar to that described in [Allahyar & de Ridder, 2015].
-
-To create the corresponding data folds and networks:
-```
-data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/sampled_loso
-aces_dir=data/SamSpecCoEN/ACES # downloaded from http://ccb.nki.nl/software/aces/
-for repeat in {0..9}
-do
-    python setupSampledLOSO_writeIndices.py data/SamSpecCoEN ${repeat}
-done
-
-for repeat in {0..9}
-do
-    for fold in {0..9}
-    do
-	   python setupCV_computeNetworks.py ${aces_dir} ${data_dir} ${fold} ${repeat}
-    done
- done
-```
-This process can easily be parallelized.
-
-**Warning** Note that for one repeat and fold, the networks take about 450 Mo of space, meaning that for 10 folds, 10 repeats, you need 43 Go of space to store the data. 
+creates sample-specific coexpression networks for the entire dataset. The network structure (list of edges), which corresponds to that given by the .sif file `../ACES/experiments/data/KEGG_edges1210.sif`, is stored under `../outputs/U133A_combat_RFS/edges.gz`. The weights are stored under `outputs/U122A_combat_DMFS/<method>/edges_weights.gz`, where `<method>` is one of `regline`, `sum`, `euclide`, `euclthr`.
 
 Cross-validation experiments
 ----------------------------
 The class for running a cross-validation experiment is `OuterCrossVal.py`. Internally, it uses `InnerCrossVal.py` to determine the best hyperparameters for the learning algorithm.
 
-```python OuterCrossVal.py ACES outputs/U133A_combat_DMFS lioness results -o 5 -k 5 -m 400``` 
+`python OuterCrossVal.py ACES outputs/U133A_combat_DMFS lioness results -o 5 -k 5 -m 400`
 runs a 5-fold cross-validation experiment on the data stored in folds under `outputs/U133A_combat_DMFS`, for the LIONESS edge weights, using a 5-fold inner cross-validation loop, and returning at most 400 genes (following ACES/FERAL). It uses both an l1-regularized logistic regression (results under the ```results/``` folder) and an l1/l2 (or Elastic Net)-regularized logistic regression  (results under the ```results/enet``` folder) .
 
 ### Subtype-stratified cross-validation 
-#### Parallelization at the repeat level
-To run a cross-validation with 5-fold of inner cross-validation (for parameter setting), returning at most 1000 features:
-```
-data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified
-aces_dir=data/SamSpecCoEN/ACES # downloaded from http://ccb.nki.nl/software/aces/
+This experiment is meant to be comparable to that of the FERAL paper: we build 10-fold cross-validations, with each fold having roughly the same number of samples from each class, and repeat this 10 times.
 
-for repeat in {0..9}
-do
-    for network in lioness regline
-    do
-        python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} ${network}  \ 
-               ${data_dir}/repeat${repeat}/results/${network} -o 10 -k 5 -m 1000
-    done
-done
-```
-This runs both an l1-regularized and an l1/l2-regularized (or ElasticNet) logistic regression. The ```--edges```
+#### Create train/test folds
+` python setUpSubTypeStratifiedCV_writeIndices.py ../../SamSpecCoEN RFS 10 0`
+creates train and test indices for `repeat0` of the cross-validation procedure, stored as `train.indices` and `test.indices` under `../../SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified/repeat0/<fold idx>/` for `<fold idx>` ranging from 0 to 9.
 
-The ```--nodes``` option allows you to run the exact same algorithm on the exact same folds, but using the node weights (i.e. gene expression data) directly instead of the edge weights, for comparison purposes (the network type is required but won't be used):
+Note that here `../../SamSpecCoEN/outputs` is equivalent to `../outputs` but this is meant to run in a flexible way (and in particular, on a cluster where the data is not stored in the same repository as the code).
 
-```
-python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness \ 
-       ${data_dir}/repeat${repeat}/results -o 10 -k 5 -m 1000 --nodes
-```
+#### Inner cross-validation
+`python InnerCrossVal.py ../ACES ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 regline ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/regline/fold0 -k 5 -m 10000` 
+runs an inner cross-validation loop (5 folds) on the training part of fold 0 of repeat 0, using the REGLINE edge weights as features, to determine optimal parameter(s) of the learning algorithm.
 
-The ```--sfan``` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan). This will also run an l2-regularized logistic regression only on the nodes that are connected in the network (i.e. not using sfan at all); the results will be under ```${data_dir}/repeat${repeat}/results/nosel$```.
+#### Outer cross-validation
+Once the optimal parameters have been determined by inner cross-validation,
+`python run_OuterCrossVal.py ../ACES ../outputs/U133A_combat_RFS/subtype_stratified/repeat0 regline ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/regline -o 10 -k 5 -m 1000`
+runs the outer loop of 10-fold cross-validation on repeat0, using the REGLINE edge weights as features, and selecting at most 1000 features.
 
-```
-python OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness  \
-       ${data_dir}/repeat${repeat}/results/sfan -o 10 -k 5 -m 1000 --nodes --sfan ${sfan_dir}
-```
+The `--nodes` option allows you to run the exact same algorithm on the exact same folds, but using the node weights (i.e. gene expression data) directly instead of the edge weights, for comparison purposes (the network type is required but won't be used).
 
-#### Parallelization at the repeat/fold level
-To run a cross-validation with 5-fold of inner cross-validation (for parameter setting), returning at most 1000 features:
-```
-data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified
-aces_dir=data/SamSpecCoEN/ACES # downloaded from http://ccb.nki.nl/software/aces/
-for repeat in {0..9}
-do
-    for fold in {0..9}
-    do
-        for network in lioness regline
-        do
-            python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} ${network} \ 
-                   ${data_dir}/repeat${repeat}/results/${network}/fold${fold} -k 5 -m 1000
-        done
-    done
-done
-```
-Followed by
-```
-data_dir=data/SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified
-aces_dir=data/SamSpecCoEN/ACES # downloaded from http://ccb.nki.nl/software/aces/
+The `--sfan` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan). This will also run an l2-regularized logistic regression only on the nodes that are connected in the network (i.e. not using sfan at all).
 
-for repeat in {0..9}
-do
-    for network in lioness regline
-    do
-        python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} ${network} \ 
-               ${data_dir}/repeat${repeat}/results/${network} -o 10 -k 5 -m 1000
-    done
-done
-```
+The `--enet` option allows you to run an elastic net (l1/l2 regularization). Currently, it uses scikit-learn's implementation, which has some issues. This should be re-implemented using [spams](http://spams-devel.gforge.inria.fr/) or [L1L2py](https://pypi.python.org/pypi/L1L2Py/1.0.5). 
 
-The ```--nodes``` option allows you to run the exact same algorithm on the exact same folds, but using the node weights (i.e. gene expression data) directly instead of the edge weights, for comparison purposes (the network type is required but won't be used):
-
-```
-python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} lioness \
-       ${data_dir}/repeat${repeat}/results/fold${fold} -k 5 -m 1000 --nodes
-  
-python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness \
-       ${data_dir}/repeat${repeat}/results -o 10 -k 5 -m 1000 --nodes
-```           
-
-The ```--sfan``` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan). This will also run an l2-regularized logistic regression only on the nodes that are connected in the network (i.e. not using sfan at all); the results will be under ```${data_dir}/repeat${repeat}/results/nosel$```.
-
-```
-python InnerCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat}/fold${fold} lioness \
-       ${data_dir}/repeat${repeat}/results/sfan/fold${fold} -k 5 -m 1000 --nodes --sfan ${sfan_dir}
- 
-python run_OuterCrossVal.py ${aces_dir} ${data_dir}/repeat${repeat} lioness \ 
-       ${data_dir}/repeat${repeat}/results/sfan -o 10 -k 5 -m 1000  --sfan ${sfan_dir}     
-```  
 
 
 References
@@ -201,6 +100,3 @@ Azencott, C.-A., Grimm, D., Sugiyama, M., Kawahara, Y., and Borgwardt, K. M. (20
 Kuijjer, M.L., Tung, M., Yuan, G., Quackenbush, J., and Glass, K. (2015). Estimating sample-specific regulatory networks. arXiv:1505.06440 [q-Bio].  
  
 Staiger, C., Cadot, S., Györffy, B., Wessels, L.F.A., and Klau, G.W. (2013). Current composite-feature classification methods do not outperform simple single-genes classifiers in breast cancer prognosis. Front Genet 4.  
-  
-Zhang, B., and Horvath, S. (2005). A General Framework for Weighted Gene Co-Expression Network Analysis. Statistical Applications in Genetics and Molecular Biology 4.
-
