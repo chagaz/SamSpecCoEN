@@ -1,7 +1,7 @@
 # @Author 
 # Chloe-Agathe Azencott
 # chloe-agathe.azencott@mines-paristech.fr
-# April 2016
+# October 2016
 
 import argparse
 import gzip
@@ -15,9 +15,11 @@ import tempfile
 import scipy.stats as st 
 
 from sklearn import linear_model as sklm 
-from sklearn import  metrics as skm
+from sklearn import metrics as skm
 from sklearn import cross_validation as skcv 
+from sklearn import preprocessing
 
+scale_data = True # whether to scale data before feeding it to l1-logreg
 
 class InnerCrossVal(object):
     """ Manage the inner cross-validation loop for learning on sample-specific co-expression networks.
@@ -616,18 +618,26 @@ class InnerCrossVal(object):
             Optimal value of the regularization parameter.
         """
         # Initialize logistic regression cross-validation classifier
-        print reg_params
+        print reg_params        
         cv_clf = sklm.LogisticRegressionCV(Cs=reg_params, penalty='l1', solver='liblinear',
-                                           cv=self.nr_folds,
+                                           cv=self.nr_folds, 
                                            class_weight='balanced', scoring='roc_auc')
 
         # Fit to training data
         print self.x_tr.shape
         print self.y_tr.shape
-        cv_clf.fit(self.x_tr, self.y_tr)
+
+        if scale_data:
+            x_scaled = preprocessing.scale(self.x_tr)
+            cv_clf.fit(x_scaled, self.y_tr)
+        else:
+            cv_clf.fit(self.x_tr, self.y_tr)
 
         # Quality of fit?
-        y_tr_pred = cv_clf.predict_proba(self.x_tr)
+        if scale_data:
+            y_tr_pred = cv_clf.predict_proba(x_scaled)
+        else:
+            y_tr_pred = cv_clf.predict_proba(self.x_tr)
         y_tr_pred = y_tr_pred[:, cv_clf.classes_.tolist().index(1)]
         print "\tTraining AUC:\t", skm.roc_auc_score(self.y_tr, y_tr_pred)
 
@@ -661,10 +671,19 @@ class InnerCrossVal(object):
                                           class_weight='balanced')
         
         # Train on the training set
-        classif.fit(self.x_tr, self.y_tr)
+        if scale_data:
+            scaler = preprocessing.StandardScaler().fit(self.x_tr)
+            x_scaled = scaler.transform(self.x_tr)
+            classif.fit(x_scaled, self.y_tr)
+        else:
+            classif.fit(self.x_tr, self.y_tr)
 
         # Predict on the test set
-        pred_values = classif.predict_proba(self.x_te)
+        if scale_data:
+            x_scaled = scaler.transform(self.x_te)
+            pred_values = classif.predict_proba(x_scaled)
+        else:
+            pred_values = classif.predict_proba(self.x_te)
 
         # Only get the probability estimates for the positive class
         pred_values = pred_values[:, classif.classes_.tolist().index(1)]
@@ -1160,26 +1179,27 @@ def main():
 
 
         # ========= l1/l2 regularization =========
-        print "l1/l2 regularization"
-        # Use a subdirectory called enet
-        results_dir = "%s/enet" % args.results_dir
-        # Create results dir if it does not exist
-        if not os.path.isdir(results_dir):
-            sys.stdout.write("Creating %s\n" % args.results_dir)
-            try: 
-                os.makedirs(results_dir)
-            except OSError:
-                if not os.path.isdir(results_dir):
-                    raise
+        else:
+            print "l1/l2 regularization"
+            # Use a subdirectory called enet
+            results_dir = "%s/enet" % args.results_dir
+            # Create results dir if it does not exist
+            if not os.path.isdir(results_dir):
+                sys.stdout.write("Creating %s\n" % args.results_dir)
+                try: 
+                    os.makedirs(results_dir)
+                except OSError:
+                    if not os.path.isdir(results_dir):
+                        raise
 
-        # Run the inner cross-validation for the l1/l2 regularization
-        #lbd_values = [1./1455 * 2**k for k in range(1, 7)]
-        #lbd_values = [1e-3 * 2**k for k in range(-3, 3)]
-        lbd_values = [0.01, 0.025, 0.05, 0.075, 1.]
-        l1_ratio_values = [0.15, 0.5, 0.75, 1.]
-        icv.run_inner_enet_logreg_write(results_dir,
-                                        reg_params=[lbd_values, l1_ratio_values])
-        #icv.train_pred_inner_enet_logreg([0.05, 1.])
+            # Run the inner cross-validation for the l1/l2 regularization
+            #lbd_values = [1./1455 * 2**k for k in range(1, 7)]
+            #lbd_values = [1e-3 * 2**k for k in range(-3, 3)]
+            lbd_values = [0.01, 0.025, 0.05, 0.075, 1.]
+            l1_ratio_values = [0.15, 0.5, 0.75, 1.]
+            icv.run_inner_enet_logreg_write(results_dir,
+                                            reg_params=[lbd_values, l1_ratio_values])
+            #icv.train_pred_inner_enet_logreg([0.05, 1.])
         # ========= End l1/l2 regularization =========
 
 
