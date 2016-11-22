@@ -29,7 +29,7 @@ class OuterCrossVal(object):
     ----------
     self.aces_data_root: path
             Path to folder containing ACES data
-    self.network_data_root: path
+    self.data_repeat_root: path
         Path to folder containing data for all folds.
     self.network_type: string
         Type of network to work with
@@ -61,7 +61,7 @@ class OuterCrossVal(object):
     Current composite-feature classification methods do not outperform simple single-genes
     classifiers in breast cancer prognosis. Front Genet 4.  
     """
-    def __init__(self, aces_data_root, network_data_root, network_type, num_samples,
+    def __init__(self, aces_data_root, data_repeat_root, network_type, num_samples,
                  nr_inner_folds, nr_outer_folds, max_nr_feats=400, use_nodes=False,
                  use_sfan=False, sfan_path=None):
         """
@@ -69,12 +69,12 @@ class OuterCrossVal(object):
         ----------
         aces_data_root: path
             Path to folder containing ACES data
-        network_data_root: path
+        data_repeat_root: path
             Path to folder containing data for all folds.
         network_type: string
             Type of network to work with
             Correspond to a folder in dataFoldRoot
-            Possible value: 'lioness', 'regline'
+            Possible value: 'regline', 'sum', 'euclide', 'euclthr'
         nr_inner_folds: int
             Number of folds for the inner cross-validation loop.
         max_nr_feats: int
@@ -98,7 +98,7 @@ class OuterCrossVal(object):
         self.max_nr_feats = max_nr_feats
 
         self.aces_data_root = aces_data_root
-        self.network_data_root = network_data_root
+        self.data_repeat_root = data_repeat_root
         self.network_type = network_type
 
         self.use_nodes = use_nodes
@@ -116,7 +116,7 @@ class OuterCrossVal(object):
             self.num_features = aces_data.expressionData.shape[1]
             f.close()
         else:
-            self.num_features = np.loadtxt("%s/fold0/edges.gz" % self.network_data_root).shape[0]
+            self.num_features = np.loadtxt("%s/edges.gz" % self.data_repeat_root).shape[0]
         
         
     # ================== l1-regularization ==================
@@ -138,7 +138,7 @@ class OuterCrossVal(object):
             sys.stdout.write("Working on fold number %d\n" % fold)
 
             # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.network_data_root, fold)
+            data_fold_root = '%s/fold%d' % (self.data_repeat_root, fold)
             te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
             
             # Create an InnerCrossVal
@@ -180,7 +180,7 @@ class OuterCrossVal(object):
             sys.stdout.write("Working on fold number %d\n" % fold)
 
             # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.network_data_root, fold)
+            data_fold_root = '%s/fold%d' % (self.data_repeat_root, fold)
             te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
             
             # Create an InnerCrossVal
@@ -222,7 +222,7 @@ class OuterCrossVal(object):
             sys.stdout.write("Working on fold number %d\n" % fold)
 
             # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.network_data_root, fold)
+            data_fold_root = '%s/fold%d' % (self.data_repeat_root, fold)
             te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
             
             # Create an InnerCrossVal
@@ -270,7 +270,7 @@ class OuterCrossVal(object):
             sys.stdout.write("Reading results for fold number %d\n" % fold)
 
             # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.network_data_root, fold)
+            data_fold_root = '%s/fold%d' % (self.data_repeat_root, fold)
             te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
             
             # Read results from InnerCrossVal
@@ -313,7 +313,7 @@ class OuterCrossVal(object):
             sys.stdout.write("Reading results for fold number %d\n" % fold)
 
             # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.network_data_root, fold)
+            data_fold_root = '%s/fold%d' % (self.data_repeat_root, fold)
             te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
             
             # Read results from InnerCrossVal
@@ -519,7 +519,7 @@ def main():
 
     Example
     -------
-        $ python OuterCrossVal.py ACES/ outputs/U133A_combat_DMFS lioness results/U133A_combat_DMFS/lioness -o 5 -k 5 -m 1000
+        $ python OuterCrossVal.py ../ACES/ ../outputs/U133A_combat_RFS regline ../results/U133A_combat_RFS/regline -o 5 -k 5 -m 1000
 
     Files created
     -------------
@@ -532,7 +532,7 @@ def main():
     parser = argparse.ArgumentParser(description="Cross-validate sample-specific co-expression networks",
                                      add_help=True)
     parser.add_argument("aces_data_path", help="Path to the folder containing the ACES data")
-    parser.add_argument("network_data_path", help="Path to the folder containing the network data")
+    parser.add_argument("data_repeat_path", help="Path to the folder containing the data for this repeat")
     parser.add_argument("network_type", help="Type of co-expression networks")
     parser.add_argument("results_dir", help="Folder where to store results")
     parser.add_argument("-o", "--num_outer_folds", help="Number of outer cross-validation folds",
@@ -550,10 +550,11 @@ def main():
     args = parser.parse_args()
 
     try:
-        assert args.network_type in ['lioness', 'regline']
+        assert args.network_type in ['regline', 'sum', 'euclide', 'euclthr']
     except AssertionError:
-        sys.stderr.write("network_type should be one of 'lioness', 'regline'.\n")
+        sys.stderr.write("network_type should be one of 'regline', 'sum', 'euclide', 'euclthr'.\n")
         sys.stderr.write("Aborting.\n")
+        sys.exit(-1)
         sys.exit(-1)
 
     # Get the total number of samples
@@ -575,7 +576,7 @@ def main():
     if args.sfan:
         # ========= Sfan =========
         # Initialize OuterCrossVal
-        ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.network_data_path, 
+        ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.data_repeat_path, 
                                           args.network_type, num_samples,
                                           args.num_inner_folds, args.num_outer_folds, 
                                           max_nr_feats=args.max_nr_feats,
@@ -611,7 +612,7 @@ def main():
 
     else:
         # Initialize OuterCrossVal
-        ocv = OuterCrossVal(args.aces_data_path, args.network_data_path, args.network_type, num_samples,
+        ocv = OuterCrossVal(args.aces_data_path, args.data_repeat_path, args.network_type, num_samples,
                             args.num_inner_folds, args.num_outer_folds, args.max_nr_feats, args.nodes)
 
         # ========= l1 regularization =========

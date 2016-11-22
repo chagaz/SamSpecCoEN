@@ -62,19 +62,21 @@ class InnerCrossVal(object):
     Current composite-feature classification methods do not outperform simple single-genes
     classifiers in breast cancer prognosis. Front Genet 4.  
     """
-    def __init__(self, aces_data_root, data_fold_root, network_type, nr_folds,
+    def __init__(self, aces_data_root, data_repeat_root, fold_dir, network_type, nr_folds,
                  max_nr_feats=400, use_nodes=False, use_sfan=False, sfan_path=None):
         """
         Parameters
         ----------
         aces_data_root: path
             Path to folder containing ACES data
-        data_fold_root: path
-            Path to folder containing data for the fold.
+        data_repeat_root: path
+            Path to folder containing data for the repeat.
+        fold_ix: directory name
+            Name of the directory corresponding to the outer CV fold we're working on
         network_type: string
             Type of network to work with
-            Correspond to a folder in data_fold_root
-            Possible value: 'lioness', 'regline'
+            Correspond to a folder in data_repeat_root
+            Possible value: 'regline', 'sum', 'euclide', 'euclthr'
         nr_folds: int
             Number of (inner) cross-validation folds.
         max_nr_feats: int
@@ -88,9 +90,9 @@ class InnerCrossVal(object):
             Path to sfan code.
         """
         try:
-            assert network_type in ['lioness', 'regline']
+            assert args.network_type in ['regline', 'sum', 'euclide', 'euclthr']
         except AssertionError:
-            sys.stderr.write("network_type should be one of 'lioness', 'regline'.\n")
+            sys.stderr.write("network_type should be one of 'regline', 'sum', 'euclide', 'euclthr'.\n")
             sys.stderr.write("Aborting.\n")
             sys.exit(-1)
 
@@ -105,19 +107,19 @@ class InnerCrossVal(object):
             f.close()
 
             # Get train/test indices for fold
-            tr_indices = np.loadtxt('%s/train.indices' % data_fold_root, dtype='int')
-            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
+            tr_indices = np.loadtxt('%s/%s/train.indices' % (data_repeat_root, fold_dir),
+                                    dtype='int')
+            te_indices = np.loadtxt('%s/%s/test.indices' % (data_repeat_root, fold_dir),
+                                    dtype='int')
 
             # Get Xtr, Xte
             self.x_tr = aces_data.expressionData[tr_indices, :]
             self.x_te = aces_data.expressionData[te_indices, :]
         else:
             print "Using edge weights as features"
-            x_tr_f = '%s/%s/edge_weights.gz' % (data_fold_root, network_type)
-            self.x_tr = np.loadtxt(x_tr_f).transpose()
-
-            x_te_f = '%s/%s/edge_weights_te.gz' % (data_fold_root, network_type)
-            self.x_te = np.loadtxt(x_te_f).transpose()
+            x_f = '%s/%s/edge_weights.gz' % (data_repeat_root, network_type)
+            self.x_tr = np.loadtxt(x_f).transpose()[tr_indices, :]
+            self.x_te = np.loadtxt(x_f).transpose()[te_indices, :]
 
         # Number of features
         self.num_features = self.x_tr.shape[1]
@@ -130,26 +132,27 @@ class InnerCrossVal(object):
         self.x_te = (self.x_te - x_mean) / x_stdv
 
         # Labels
-        self.y_tr = np.loadtxt('%s/train.labels' % data_fold_root, dtype='int')
-        self.y_te = np.loadtxt('%s/test.labels' % data_fold_root, dtype='int')
-
+        self.y_tr = np.loadtxt('%s/%s/train.labels' % (data_repeat_root, fold_dir),
+                               dtype='int')
+        self.y_te = np.loadtxt('%s/%s/test.labels' % (data_repeat_root, fold_dir),
+                               dtype='int')
         self.nr_folds = nr_folds
         self.max_nr_feats = max_nr_feats
 
         # Compute extra files for the usage of sfan:
         if use_sfan:
             print "Using sfan"
-            edges_f = '%s/edges.gz' % data_fold_root
+            edges_f = '%s/%s/edges.gz' % (data_repeat_root, network_type)
 
             # Number of edges
             self.num_edges = np.loadtxt(edges_f).shape[0]
 
             # Dimacs network and connected nodes
-            self.ntwk_dimacs_f = '%s/network.dimacs' % data_fold_root
+            self.ntwk_dimacs_f = '%s/%s/network.dimacs' % (data_repeat_root, network_type)
             self.compute_dimacs(edges_f)
 
             # Node weights
-            self.node_weights_f = '%s/scores.txt' % data_fold_root
+            self.node_weights_f = '%s/%s/scores.txt' % (data_repeat_root, network_type)
             self.compute_node_weights()
 
             # Path to sfan
@@ -1078,12 +1081,8 @@ def main():
 
     Example
     -------
-        $ python InnerCrossVal.py ACES outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 lioness \
-          outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/lioness/fold0 -k 5 -m 1000 
-
-        $ python InnerCrossVal.py ACES outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 lioness \
-          outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/sfan/fold0 -k 5 -m 1000 \
-          --sfan  ../../sfan/code 
+        $ python InnerCrossVal.py ../ACES ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 \
+    regline ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/regline/fold0 -k 5 -m 1000 
 
     Files created
     -------------
@@ -1115,20 +1114,25 @@ def main():
     args = parser.parse_args()
 
     try:
-        assert args.network_type in ['lioness', 'regline']
+        assert args.network_type in ['regline', 'sum', 'euclide', 'euclthr']
     except AssertionError:
-        sys.stderr.write("network_type should be one of 'lioness', 'regline'.\n")
+        sys.stderr.write("network_type should be one of 'regline', 'sum', 'euclide', 'euclthr'.\n")
         sys.stderr.write("Aborting.\n")
         sys.exit(-1)
 
-    # To sfan or not to sfan?
+    # Whether or not to use sfan
     use_sfan = False
     if args.sfan:
         use_sfan = True
+
+    # Split network_data_path into repeat and fold parts of the path
+    s = args.network_data_path.split("/")
+    data_repeat_root = "/".join(s[:-1])
+    fold_dir = s[-1]
         
     # Initialize InnerCrossVal
-    icv = InnerCrossVal(args.aces_data_path, args.network_data_path, args.network_type, 
-                        args.num_inner_folds, 
+    icv = InnerCrossVal(args.aces_data_path, data_repeat_root, fold_dir,
+                        args.network_type, args.num_inner_folds, 
                         max_nr_feats=args.max_nr_feats, 
                         use_nodes=args.nodes, use_sfan=use_sfan, sfan_path=args.sfan)
 
@@ -1155,19 +1159,17 @@ def main():
                     raise
                     
         ridge_C = [10.**k for k in range(-4, 1)]
-        # ridge_C = [10.**(-3)]
         icv.run_inner_l2_logreg_write(results_dir, reg_params=ridge_C)
         
         # Use sfan to select features
         sfan_eta_values = [10**(k) for k in range(-5, -2)]
         sfan_lbd_values = [10**(k) for k in range(-5, -2)]
-        # sfan_eta_values = [10**(-5)]
-        # sfan_lbd_values = [10**(-5)]
         
         icv.run_inner_sfan_write(args.results_dir,
                                  reg_params=[itertools.product(sfan_lbd_values,
                                                                sfan_eta_values), ridge_C])
     # ========= End sfan =========
+        
     else:
         # ========= l1 regularization =========
         if not args.enet:
@@ -1180,6 +1182,7 @@ def main():
 
         # ========= l1/l2 regularization =========
         else:
+            # TODO: Replace sklearn.linear_model.SGDClassifier with spams or L1L2Py
             print "l1/l2 regularization"
             # Use a subdirectory called enet
             results_dir = "%s/enet" % args.results_dir
@@ -1193,13 +1196,10 @@ def main():
                         raise
 
             # Run the inner cross-validation for the l1/l2 regularization
-            #lbd_values = [1./1455 * 2**k for k in range(1, 7)]
-            #lbd_values = [1e-3 * 2**k for k in range(-3, 3)]
             lbd_values = [0.01, 0.025, 0.05, 0.075, 1.]
             l1_ratio_values = [0.15, 0.5, 0.75, 1.]
             icv.run_inner_enet_logreg_write(results_dir,
                                             reg_params=[lbd_values, l1_ratio_values])
-            #icv.train_pred_inner_enet_logreg([0.05, 1.])
         # ========= End l1/l2 regularization =========
 
 

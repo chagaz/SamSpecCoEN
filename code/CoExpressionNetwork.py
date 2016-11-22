@@ -312,7 +312,7 @@ class CoExpressionNetwork(object):
             sys.stderr.write("Aborting.\n")
             sys.exit(-1)
 
-        weights_f = '%s/edge_weights.gz' % regline_path
+        weights_f = '%s/edge_weights.gz' % sum_path
 
         # Compute edge weights
         weights = np.ones((self.num_edges, self.num_samples))
@@ -352,7 +352,7 @@ class CoExpressionNetwork(object):
             sys.stderr.write("Aborting.\n")
             sys.exit(-1)
 
-        weights_f = '%s/edge_weights.gz' % regline_path
+        weights_f = '%s/edge_weights.gz' % euclide_path
 
         # Compute edge weights
         weights = np.ones((self.num_edges, self.num_samples))
@@ -393,7 +393,7 @@ class CoExpressionNetwork(object):
             sys.stderr.write("Aborting.\n")
             sys.exit(-1)
 
-        weights_f = '%s/edge_weights.gz' % regline_path
+        weights_f = '%s/edge_weights.gz' % euclthr_path
 
         # Compute edge weights
         weights = np.ones((self.num_edges, self.num_samples))
@@ -435,9 +435,6 @@ def run_whole_data(expression_data, sample_labels, gene_names,
         Each line is an undirected edge, formatted as:
             <index of gene 1> <index of gene 2>
         By convention, the index of gene 1 is smaller than that of gene 2.
-    out_dir/global_connectivity.png
-        Regression plot of log10(p(connectivities)) against log10(connectivities)
-        for the global network.
     out_dir/regline/edge_weights.gz:
         gzipped file containing the (self.num_edges, self.num_samples) array
         describing the edge weights of the Regline co-expression networks
@@ -540,10 +537,6 @@ def run_whole_data_aces(aces_data, ppi_data, refc_data, out_dir)
     out_dir/global_connectivity.png
         Regression plot of log10(p(connectivities)) against log10(connectivities)
         for the global network.
-    out_dir/lioness/edge_weights.gz:
-        gzipped file containing the (self.num_edges, self.num_samples) array
-        describing the edge weights of the LIONESS co-expression networks
-        for each sample (training samples only if self.tr_indices)
     out_dir/regline/edge_weights.gz:
         gzipped file containing the (self.num_edges, self.num_samples) array
         describing the edge weights of the Regline co-expression networks
