@@ -17,7 +17,7 @@ def main():
     on the ACES data.
 
     The data will be stored under
-        <data_dir>/outputs/U133A_combat_<dataset_name>/subtype_stratified/repeat<repeat idx>
+        <out_dir>/repeat<repeat idx>
     with the following structure:
         For k=1..num_folds:
             <k>/train.indices
@@ -29,7 +29,7 @@ def main():
             <k>/test.labels
                 List of (0/1) labels of the test set (one per line).
     Example:
-        $ python setUpSubTypeStratifiedCV_writeIndices.py /share/data40T/chloe/SamSpecCoEN RFS 10 0
+        $ python setUpSubTypeStratifiedCV_writeIndices.py RDS../outputs/U133A_combat_RFS/subtype_stratified 10 0
     
     Reference
     ---------
@@ -40,10 +40,14 @@ def main():
     parser = argparse.ArgumentParser(description="Build the train and test indices" + \
                                      "for a sub-type stratified cross-validation on the RFS data",
                                      add_help=True)
-    parser.add_argument("data_dir", help="Data directory")
-    parser.add_argument("dataset_name", help="Dataset name")
-    parser.add_argument("num_folds", help="Number of folds", type=int)
-    parser.add_argument("repeat", help="Index of the repeat", type=int)
+    parser.add_argument("dataset_name",
+                        help="Dataset name")
+    parser.add_argument("out_dir",
+                        help="Where to store generated folds")
+    parser.add_argument("num_folds",
+                        help="Number of folds", type=int)
+    parser.add_argument("repeat",
+                        help="Index of the repeat", type=int)
     args = parser.parse_args()
 
     try:
@@ -53,9 +57,7 @@ def main():
         sys.stderr.write("Aborting.\n")
         sys.exit(-1)
     
-    out_dir = '%s/outputs/U133A_combat_%s/subtype_stratified/repeat%d' % (args.data_dir,
-                                                                          args.dataset_name,
-                                                                          args.repeat)
+    out_dir = '%s/repeat%d' % (args.out_dir, args.repeat)
     # Create out_dir if it does not exist
     if not os.path.isdir(out_dir):
         sys.stdout.write("Creating %s\n" % out_dir)
@@ -66,12 +68,12 @@ def main():
                 raise
 
     # Get expression data, sample labels.
-    f = h5py.File("%s/ACES/experiments/data/U133A_combat.h5" % args.data_dir)
+    f = h5py.File("../ACES/experiments/data/U133A_combat.h5", "r")
     sample_labels = np.array(f['U133A_combat_%s' % args.dataset_name]['PatientClassLabels'])
     f.close()
     
     # Create the data split:
-    skf = skcv.StratifiedKFold(sample_labels, n_folds=num_folds,
+    skf = skcv.StratifiedKFold(sample_labels, n_folds=args.num_folds,
                                shuffle=True, random_state=args.repeat)
 
     for fold_nr, (tr_indices, te_indices) in enumerate(skf):

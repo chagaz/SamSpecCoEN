@@ -28,9 +28,11 @@ class OuterCrossVal(object):
     Attributes
     ----------
     self.aces_data_root: path
-            Path to folder containing ACES data
-    self.data_repeat_root: path
-        Path to folder containing data for all folds.
+        Path to folder containing ACES data
+    self.innercv_root: path
+        Path to folder containing outputs of inner cross-validation.
+    self.network_root: path
+        Path to folder containing network skeleton and edges.
     self.network_type: string
         Type of network to work with
     self.nr_inner_folds: int
@@ -61,16 +63,18 @@ class OuterCrossVal(object):
     Current composite-feature classification methods do not outperform simple single-genes
     classifiers in breast cancer prognosis. Front Genet 4.  
     """
-    def __init__(self, aces_data_root, data_repeat_root, network_type, num_samples,
+    def __init__(self, aces_data_root, ntwk_root, innercv_root, network_type, num_samples,
                  nr_inner_folds, nr_outer_folds, max_nr_feats=400, use_nodes=False,
-                 use_sfan=False, sfan_path=None):
+                 use_sfan=False, sfan_path=None, use_enet=None):
         """
         Parameters
         ----------
         aces_data_root: path
             Path to folder containing ACES data
-        data_repeat_root: path
-            Path to folder containing data for all folds.
+        ntwk_root: path
+            Path to folder containing network skeleton and edges.
+        innercv_root: path
+            Path to folder containing outputs of inner cross-validation.
         network_type: string
             Type of network to work with
             Correspond to a folder in dataFoldRoot
@@ -85,6 +89,8 @@ class OuterCrossVal(object):
            (This does not make use of the network information.)
         use_sfan: bool
             Whether to use sfan on {node weights + network structure} rather than edge weights.
+        use_enet: bool
+            Whether to use l1/l2 (elastic net) regularization rather than l1.
         sfan_path: path
             Path to sfan code.
         """
@@ -98,10 +104,12 @@ class OuterCrossVal(object):
         self.max_nr_feats = max_nr_feats
 
         self.aces_data_root = aces_data_root
-        self.data_repeat_root = data_repeat_root
+        self.innercv_root = innercv_root
+        self.network_root = ntwk_root
         self.network_type = network_type
 
         self.use_nodes = use_nodes
+        self.use_enet = use_enet
         self.use_sfan = use_sfan
         if self.use_sfan:
             self.use_nodes = True
@@ -116,7 +124,7 @@ class OuterCrossVal(object):
             self.num_features = aces_data.expressionData.shape[1]
             f.close()
         else:
-            self.num_features = np.loadtxt("%s/edges.gz" % self.data_repeat_root).shape[0]
+            self.num_features = np.loadtxt("%s/edges.gz" % self.network_root).shape[0]
         
         
     # ================== l1-regularization ==================
@@ -138,15 +146,14 @@ class OuterCrossVal(object):
             sys.stdout.write("Working on fold number %d\n" % fold)
 
             # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.data_repeat_root, fold)
-            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
+            data_fold_root = '%s/fold%d' % (self.innercv_root, fold)
+            te_indices = np.loadtxt('%s/test.indices' % fold_root, dtype='int')
             
             # Create an InnerCrossVal
-            icv = InnerCrossVal.InnerCrossVal(self.aces_data_path, data_fold_root,
-                                              self.network_type, self.nr_inner_folds,
-                                              self.max_nr_feats, self.use_nodes)
-                                              
-
+            icv = InnerCrossVal.InnerCrossVal(self.aces_data_root, data_fold_root,
+                                              self.network_root, self.network_type,
+                                              self.nr_inner_folds, self.max_nr_feats, self.use_nodes)
+            
             # Get predictions and selected features for the inner loop
             reg_params = [2.**k for k in range(-7, -1)]
             [pred_values_fold, features_fold] = icv.run_inner_l1_logreg(reg_params=reg_params)
@@ -180,15 +187,14 @@ class OuterCrossVal(object):
             sys.stdout.write("Working on fold number %d\n" % fold)
 
             # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.data_repeat_root, fold)
+            data_fold_root = '%s/fold%d' % (self.data_innercv_root, fold)
             te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
             
             # Create an InnerCrossVal
-            icv = InnerCrossVal.InnerCrossVal(self.aces_data_path, data_fold_root,
-                                              self.network_type, self.nr_inner_folds,
-                                              self.max_nr_feats, self.use_nodes)
-                                              
-
+            icv = InnerCrossVal.InnerCrossVal(self.aces_data_root, data_fold_root,
+                                              self.network_root, self.network_type,
+                                              self.nr_inner_folds, self.max_nr_feats, self.use_nodes)
+            
             # Get predictions and selected features for the inner loop
             reg_params = [10.**k for k in range(-4, 1)]
             [pred_values_fold, features_fold] = icv.run_inner_l2_logreg(reg_params=reg_params)
@@ -222,14 +228,13 @@ class OuterCrossVal(object):
             sys.stdout.write("Working on fold number %d\n" % fold)
 
             # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.data_repeat_root, fold)
+            data_fold_root = '%s/fold%d' % (self.data_innercv_root, fold)
             te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
             
             # Create an InnerCrossVal
-            icv = InnerCrossVal.InnerCrossVal(self.aces_data_path, data_fold_root,
-                                              self.network_type, self.nr_inner_folds,
-                                              self.max_nr_feats, self.use_nodes)
-                                              
+            icv = InnerCrossVal.InnerCrossVal(self.aces_data_root, data_fold_root,
+                                              self.network_root, self.network_type,
+                                              self.nr_inner_folds, self.max_nr_feats, self.use_nodes)
 
             # Get predictions and selected features for the inner loop
             lbd_values = []
@@ -247,14 +252,14 @@ class OuterCrossVal(object):
     # ================== End l1/l2-regularization ==================
 
 
-    def read_inner_results(self, inner_cv_resdir):
+    def read_inner_results(self, subdir_name=None):
         """ Read the results of the inner loop of the experiment.
-
+        
         Parameters
         ----------
-        inner_cv_resdir: path
-            Path to outputs of InnerCrossVal for each fold
-
+        subdir_name: {string, None}
+            Name of subdirectory of innercv_results_dir that contains the results to process.
+        
         Updated attributes
         ------------------
         true_labels: (num_samples, ) array
@@ -266,71 +271,43 @@ class OuterCrossVal(object):
         features_list: list of list
             List of list of indices of the selected features.
         """
-        for fold in range(self.nr_outer_folds):
-            sys.stdout.write("Reading results for fold number %d\n" % fold)
+        for fold_idx in range(self.nr_outer_folds):
+            sys.stdout.write("Reading results for fold %d\n" % fold_idx)
 
             # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.data_repeat_root, fold)
-            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
+            te_indices = np.loadtxt('%s/fold%d/test.indices' % (self.innercv_root, fold_idx),
+                                    dtype='int')
             
             # Read results from InnerCrossVal
-            yte_fname = '%s/fold%d/yte' % (inner_cv_resdir, fold)
+            if self.use_nodes:
+                if self.use_sfan:
+                    innercv_results_dir = "%s/fold%d/results/nodes/sfan" % (self.innercv_root, fold_idx)
+                elif self.use_enet:
+                    innercv_results_dir = '%s/fold%d/results/nodes/enet' % (self.innercv_root, fold_idx)
+                else:
+                    innercv_results_dir = '%s/fold%d/results/nodes/' % (self.innercv_root, fold_idx)
+            elif self.use_enet:
+                innercv_results_dir = '%s/fold%d/results/%s/enet' % (self.innercv_root, fold_idx,
+                                                                     self.network_type)
+            else:
+                innercv_results_dir = '%s/fold%d/results/%s/' % (self.innercv_root, fold_idx,
+                                                                 self.network_type)
+            if subdir_name:
+                innercv_results_dir = '%s/%s' % (innercv_results_dir, subdir_name)
+
+            yte_fname = '%s/yte' % innercv_results_dir
             self.true_labels[te_indices] = np.loadtxt(yte_fname, dtype='int')
 
-            pred_values_fname = '%s/fold%d/predValues' % (inner_cv_resdir, fold)
+            pred_values_fname = '%s/predValues' % innercv_results_dir        
             self.pred_values[te_indices] = np.loadtxt(pred_values_fname)
 
-            features_list_fname = '%s/fold%d/featuresList' % (inner_cv_resdir, fold)
+            features_list_fname = '%s/featuresList' % innercv_results_dir
             self.features_list.append(np.loadtxt(features_list_fname, dtype='int'))
 
         # Convert probability estimates in labels
         self.pred_labels = np.array(self.pred_values > 0, dtype='int')
 
 
-    def read_inner_results_subdir(self, inner_cv_resdir, subdir_name):
-        """ Read the results of the inner loop of the experiment.
-
-        Parameters
-        ----------
-        inner_cv_resdir: path
-            Path to outputs of InnerCrossVal for each fold.
-        subdir_name: folder name
-            Name of the subdirectory of inner_cv_resdir/fold<fold_nr> 
-            in which to find results.
-
-        Updated attributes
-        ------------------
-        true_labels: (num_samples, ) array
-            True labels for all samples.
-        pred_labels: (num_samples, ) array
-            Predicted labels for all samples, in the same order as true_labels.
-        pred_values: (num_samples, ) array
-            Probability estimates for all samples, in the same order as true_labels.
-        features_list: list of list
-            List of list of indices of the selected features.
-        """
-        for fold in range(self.nr_outer_folds):
-            sys.stdout.write("Reading results for fold number %d\n" % fold)
-
-            # Read the test indices
-            data_fold_root = '%s/fold%d' % (self.data_repeat_root, fold)
-            te_indices = np.loadtxt('%s/test.indices' % data_fold_root, dtype='int')
-            
-            # Read results from InnerCrossVal
-            yte_fname = '%s/fold%d/%s/yte' % (inner_cv_resdir, fold, subdir_name)
-            self.true_labels[te_indices] = np.loadtxt(yte_fname, dtype='int')
-
-            pred_values_fname = '%s/fold%d/%s/predValues' % (inner_cv_resdir, fold, subdir_name)
-            self.pred_values[te_indices] = np.loadtxt(pred_values_fname)
-
-            features_list_fname = '%s/fold%d/%s/featuresList' % (inner_cv_resdir, fold, subdir_name)
-            self.features_list.append(np.loadtxt(features_list_fname, dtype='int'))
-
-        # Convert probability estimates in labels
-        self.pred_labels = np.array(self.pred_values > 0, dtype='int')
-
-        
-        
     # ================== Sfan ==================
     def run_outer_sfan(self):
         """ Run the outer loop of the experiment, for an l2-regularized logistic regression
@@ -515,12 +492,15 @@ class OuterCrossVal(object):
 
         
 def main():
-    """ Run a cross-validation experiment on sample-specific co-expression networks.
-
+    """ Perform a cross-validation experiment on sample-specific co-expression networks
+    in the case where inner cross-validation results are available.
+    
     Example
     -------
-        $ python OuterCrossVal.py ../ACES/ ../outputs/U133A_combat_RFS regline ../results/U133A_combat_RFS/regline -o 5 -k 5 -m 1000
-
+        $ python OuterCrossVal.py ../ACES ../outputs/U133A_combat_RFS \
+         ../outputs/U133A_combat_RFS/subtype_stratified/repeat0  \
+         regline -o 10 -k 5 -m 1000
+    
     Files created
     -------------
     <results_dir>/results.txt
@@ -531,10 +511,10 @@ def main():
     """
     parser = argparse.ArgumentParser(description="Cross-validate sample-specific co-expression networks",
                                      add_help=True)
-    parser.add_argument("aces_data_path", help="Path to the folder containing the ACES data")
-    parser.add_argument("data_repeat_path", help="Path to the folder containing the data for this repeat")
-    parser.add_argument("network_type", help="Type of co-expression networks")
-    parser.add_argument("results_dir", help="Folder where to store results")
+    parser.add_argument("aces_data_path", help="Folder containing the ACES data")
+    parser.add_argument("network_path", help="Folder containing network skeleton and weights")
+    parser.add_argument("innercv_path", help="Folder containing the inner cross-validation results")
+    parser.add_argument("network_type", help="Type of co-expression network")
     parser.add_argument("-o", "--num_outer_folds", help="Number of outer cross-validation folds",
                         type=int)
     parser.add_argument("-k", "--num_inner_folds", help="Number of inner cross-validation folds",
@@ -543,10 +523,10 @@ def main():
                         type=int)
     parser.add_argument("-n", "--nodes", action='store_true', default=False,
                         help="Work with node weights rather than edge weights")
-    parser.add_argument("-e", "--enet", action='store_true', default=False,
-                        help="Only run elastic net")
     parser.add_argument("-s", "--sfan",
                         help='Path to sfan code (then automatically use sfan + l2 logistic regression)')
+    parser.add_argument("-e", "--enet", action='store_true', default=False,
+                        help="Run elastic net instead of lasso.")
     args = parser.parse_args()
 
     try:
@@ -555,39 +535,31 @@ def main():
         sys.stderr.write("network_type should be one of 'regline', 'sum', 'euclide', 'euclthr'.\n")
         sys.stderr.write("Aborting.\n")
         sys.exit(-1)
-        sys.exit(-1)
 
     # Get the total number of samples
     num_samples = 0
     for fold_nr in range(args.num_outer_folds):
-        with open('%s/fold%d/test.indices' % (args.netowrk_data_path, fold_nr)) as f:
+        with open('%s/fold%d/test.indices' % (args.innercv_path, fold_nr)) as f:
             num_samples += len(f.readlines())
             f.close()
-
-    # Create results dir if it does not exist
-    if not os.path.isdir(args.results_dir):
-        sys.stdout.write("Creating %s\n" % args.results_dir)
-        try: 
-            os.makedirs(args.results_dir)
-        except OSError:
-            if not os.path.isdir(args.results_dir):
-                raise
+    print "%d samples" % num_samples
 
     if args.sfan:
         # ========= Sfan =========
         # Initialize OuterCrossVal
-        ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.data_repeat_path, 
-                                          args.network_type, num_samples,
-                                          args.num_inner_folds, args.num_outer_folds, 
-                                          max_nr_feats=args.max_nr_feats,
-                                          use_nodes=True, use_sfan=True, sfan_path=args.sfan)
-
+        ocv = OuterCrossVal(args.aces_data_path, args.network_path, args.innercv_path, 
+                            args.network_type, num_samples,
+                            args.num_inner_folds, args.num_outer_folds, 
+                            max_nr_feats=args.max_nr_feats,
+                            use_nodes=True, use_sfan=True, sfan_path=args.sfan)
+        
         # Baseline using only connected features
-        # Run the experiment
-        ocv.run_outer_l2_logreg()
+        # Read outputs from inner cross-validation experiments 
+        ocv.read_inner_results('nosel')
 
+        # Write results
+        results_dir = '%s/repeat0/results/nodes/sfan/nosel' % args.innercv_path
         # Create results dir if it does not exist
-        results_dir = '%s/nosel' % args.results_dir
         if not os.path.isdir(results_dir):
             sys.stdout.write("Creating %s\n" % results_dir)
             try: 
@@ -595,45 +567,45 @@ def main():
             except OSError:
                 if not os.path.isdir(results_dir):
                     raise
-
-        # Write results
+        
         ocv.write_results(results_dir)
 
-        # Use sfan to select features
-        # Run the experiment
-        ocv.run_outer_sfan()
-
-        print "Number of features:\t", [len(x) for x in ocv.features_list]
-        print "AUC:\t", ocv.compute_auc()
+        #  Use sfan to select features
+        # Read outputs from inner cross-validation experiments
+        ocv.read_inner_results()
 
         # Write results
-        ocv.write_results(args.results_dir)
+        results_dir = '%s/results/nodes/sfan' % args.innercv_path
+        # Create results dir if it does not exist
+        if not os.path.isdir(results_dir):
+            sys.stdout.write("Creating %s\n" % results_dir)
+            try: 
+                os.makedirs(results_dir)
+            except OSError:
+                if not os.path.isdir(results_dir):
+                    raise
+        ocv.write_results(results_dir)
         # ========= End sfan =========
 
     else:
         # Initialize OuterCrossVal
-        ocv = OuterCrossVal(args.aces_data_path, args.data_repeat_path, args.network_type, num_samples,
-                            args.num_inner_folds, args.num_outer_folds, args.max_nr_feats, args.nodes)
-
-        # ========= l1 regularization =========
+        ocv = OuterCrossVal(args.aces_data_path, args.network_path, args.innercv_path, 
+                            args.network_type, num_samples,
+                            args.num_inner_folds, args.num_outer_folds, 
+                            max_nr_feats=args.max_nr_feats,
+                            use_nodes=args.nodes)
+        
+        # ========= l1-regularized logistic regression =========\
         if not args.enet:
-            # Run the experiment
-            ocv.run_outer_l1_logreg()
+            # Read outputs from inner cross-validation experiments
+            ocv.read_inner_results()
 
-            print "Number of features:\t", [len(x) for x in ocv.features_list]
-            print "AUC:\t", ocv.compute_auc()
-
-            ocv.write_results(args.results_dir)
-        # ========= End l1 regularization =========
-
-
-        # ========= l1/l2 regularization =========
-        else:
-            # Run the experiment
-            ocv.run_outer_enet_logreg()
-
+            # Write results
+            if args.nodes:
+                results_dir = '%s/results/nodes' % args.innercv_path
+            else:
+                results_dir = '%s/results/%s' % (args.innercv_path, args.network_type)
             # Create results dir if it does not exist
-            results_dir = '%s/enet' % args.results_dir
             if not os.path.isdir(results_dir):
                 sys.stdout.write("Creating %s\n" % results_dir)
                 try: 
@@ -641,14 +613,31 @@ def main():
                 except OSError:
                     if not os.path.isdir(results_dir):
                         raise
-
-            print "Number of features:\t", [len(x) for x in ocv.features_list]
-            print "AUC:\t", ocv.compute_auc()
-
             ocv.write_results(results_dir)
-        # ========= End l1/l2 regularization =========
+        # ========= End l1-regularized logistic regression =========
 
-    
+        
+        # ========= l1/l2-regularized logistic regression =========
+        else:
+            # Read outputs from inner cross-validation experiments
+            ocv.read_inner_results()
+
+            # Write results
+            if args.nodes:
+                results_dir = '%s/results/nodes/enet' % args.innercv_path
+            else:
+                results_dir = '%s/results/%s/enet' % (args.innercv_path, args.network_type)
+            # Create results dir if it does not exist
+            if not os.path.isdir(results_dir):
+                sys.stdout.write("Creating %s\n" % results_dir)
+                try: 
+                    os.makedirs(results_dir)
+                except OSError:
+                    if not os.path.isdir(results_dir):
+                        raise
+            ocv.write_results(results_dir)
+        # ========= End l1/l2-regularized logistic regression =========
+
     
 
 if __name__ == "__main__":

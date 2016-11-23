@@ -62,20 +62,20 @@ class InnerCrossVal(object):
     Current composite-feature classification methods do not outperform simple single-genes
     classifiers in breast cancer prognosis. Front Genet 4.  
     """
-    def __init__(self, aces_data_root, data_repeat_root, fold_dir, network_type, nr_folds,
+    def __init__(self, aces_data_root, trte_root, ntwk_root, network_type, nr_folds,
                  max_nr_feats=400, use_nodes=False, use_sfan=False, sfan_path=None):
         """
         Parameters
         ----------
         aces_data_root: path
             Path to folder containing ACES data
-        data_repeat_root: path
-            Path to folder containing data for the repeat.
-        fold_ix: directory name
-            Name of the directory corresponding to the outer CV fold we're working on
+        trte_root: path
+            Path to folder containing train and test indices and labels for the experiment.
+        ntwk_root: path
+            Path to folder containing network skeleton and edges.
         network_type: string
             Type of network to work with
-            Correspond to a folder in data_repeat_root
+            Correspond to a folder in trte_root
             Possible value: 'regline', 'sum', 'euclide', 'euclthr'
         nr_folds: int
             Number of (inner) cross-validation folds.
@@ -90,11 +90,15 @@ class InnerCrossVal(object):
             Path to sfan code.
         """
         try:
-            assert args.network_type in ['regline', 'sum', 'euclide', 'euclthr']
+            assert network_type in ['regline', 'sum', 'euclide', 'euclthr']
         except AssertionError:
             sys.stderr.write("network_type should be one of 'regline', 'sum', 'euclide', 'euclthr'.\n")
             sys.stderr.write("Aborting.\n")
             sys.exit(-1)
+
+        # Get train/test indices for fold
+        tr_indices = np.loadtxt('%s/train.indices' % trte_root, dtype='int')
+        te_indices = np.loadtxt('%s/test.indices' % trte_root, dtype='int')
 
         if use_nodes or use_sfan:
             print "Using node weights as features"
@@ -106,18 +110,12 @@ class InnerCrossVal(object):
             aces_data = HDF5GroupToExpressionDataset(f['U133A_combat_RFS'], checkNormalise=False)
             f.close()
 
-            # Get train/test indices for fold
-            tr_indices = np.loadtxt('%s/%s/train.indices' % (data_repeat_root, fold_dir),
-                                    dtype='int')
-            te_indices = np.loadtxt('%s/%s/test.indices' % (data_repeat_root, fold_dir),
-                                    dtype='int')
-
             # Get Xtr, Xte
             self.x_tr = aces_data.expressionData[tr_indices, :]
             self.x_te = aces_data.expressionData[te_indices, :]
         else:
             print "Using edge weights as features"
-            x_f = '%s/%s/edge_weights.gz' % (data_repeat_root, network_type)
+            x_f = '%s/%s/edge_weights.gz' % (ntwk_root, network_type)
             self.x_tr = np.loadtxt(x_f).transpose()[tr_indices, :]
             self.x_te = np.loadtxt(x_f).transpose()[te_indices, :]
 
@@ -132,27 +130,25 @@ class InnerCrossVal(object):
         self.x_te = (self.x_te - x_mean) / x_stdv
 
         # Labels
-        self.y_tr = np.loadtxt('%s/%s/train.labels' % (data_repeat_root, fold_dir),
-                               dtype='int')
-        self.y_te = np.loadtxt('%s/%s/test.labels' % (data_repeat_root, fold_dir),
-                               dtype='int')
+        self.y_tr = np.loadtxt('%s/train.labels' % trte_root, dtype='int')
+        self.y_te = np.loadtxt('%s/test.labels' % trte_root, dtype='int')
         self.nr_folds = nr_folds
         self.max_nr_feats = max_nr_feats
 
         # Compute extra files for the usage of sfan:
         if use_sfan:
             print "Using sfan"
-            edges_f = '%s/%s/edges.gz' % (data_repeat_root, network_type)
+            edges_f = '%s/edges.gz' % ntwk_root
 
             # Number of edges
             self.num_edges = np.loadtxt(edges_f).shape[0]
 
             # Dimacs network and connected nodes
-            self.ntwk_dimacs_f = '%s/%s/network.dimacs' % (data_repeat_root, network_type)
+            self.ntwk_dimacs_f = '%s/network.dimacs' % ntwk_root
             self.compute_dimacs(edges_f)
 
             # Node weights
-            self.node_weights_f = '%s/%s/scores.txt' % (data_repeat_root, network_type)
+            self.node_weights_f = '%s/scores.txt' % ntwk_root
             self.compute_node_weights()
 
             # Path to sfan
@@ -1081,8 +1077,9 @@ def main():
 
     Example
     -------
-        $ python InnerCrossVal.py ../ACES ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 \
-    regline ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/regline/fold0 -k 5 -m 1000 
+        $ python InnerCrossVal.py ../ACES ../outputs/U133A_combat_RFS/ \
+    ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 \
+    regline -k 5 -m 1000 
 
     Files created
     -------------
@@ -1098,9 +1095,9 @@ def main():
     parser = argparse.ArgumentParser(description="Inner CV of sample-specific co-expression networks",
                                      add_help=True)
     parser.add_argument("aces_data_path", help="Path to the folder containing the ACES data")
-    parser.add_argument("network_data_path", help="Path to the folder containing the network data")
+    parser.add_argument("network_path", help="Path to the folder containing network skeleton and weights")
+    parser.add_argument("trte_path", help="Path to the folder containing train/test indices")
     parser.add_argument("network_type", help="Type of co-expression networks")
-    parser.add_argument("results_dir", help="Folder where to store results")
     parser.add_argument("-k", "--num_inner_folds", help="Number of inner cross-validation folds",
                         type=int)
     parser.add_argument("-m", "--max_nr_feats", help="Maximum number of selected features",
@@ -1125,17 +1122,25 @@ def main():
     if args.sfan:
         use_sfan = True
 
-    # Split network_data_path into repeat and fold parts of the path
-    s = args.network_data_path.split("/")
-    data_repeat_root = "/".join(s[:-1])
-    fold_dir = s[-1]
-        
     # Initialize InnerCrossVal
-    icv = InnerCrossVal(args.aces_data_path, data_repeat_root, fold_dir,
+    icv = InnerCrossVal(args.aces_data_path, args.trte_path, args.network_path,
                         args.network_type, args.num_inner_folds, 
                         max_nr_feats=args.max_nr_feats, 
                         use_nodes=args.nodes, use_sfan=use_sfan, sfan_path=args.sfan)
 
+    # Results directory
+    if args.nodes:
+        if args.sfan:
+            args.results_dir = "%s/results/nodes/sfan" % args.trte_path
+        elif args.enet:
+            args.results_dir = "%s/results/nodes/enet" % args.trte_path
+        else:
+            args.results_dir = "%s/results/nodes" % args.trte_path
+    elif args.enet:
+        args.results_dir = "%s/results/%s/enet" % (args.trte_path, args.network_type)
+    else:
+        args.results_dir = "%s/results/%s" % (args.trte_path, args.network_type)
+        
     # Create results dir if it does not exist
     if not os.path.isdir(args.results_dir):
         sys.stdout.write("Creating %s\n" % args.results_dir)
@@ -1147,19 +1152,8 @@ def main():
 
     # ========= sfan =========
     if use_sfan:
-        # Baseline using only connected features
-        results_dir = "%s/nosel" % args.results_dir
-        # Create results dir if it does not exist
-        if not os.path.isdir(results_dir):
-            sys.stdout.write("Creating %s\n" % results_dir)
-            try: 
-                os.makedirs(results_dir)
-            except OSError:
-                if not os.path.isdir(results_dir):
-                    raise
-                    
         ridge_C = [10.**k for k in range(-4, 1)]
-        icv.run_inner_l2_logreg_write(results_dir, reg_params=ridge_C)
+        icv.run_inner_l2_logreg_write(args.results_dir, reg_params=ridge_C)
         
         # Use sfan to select features
         sfan_eta_values = [10**(k) for k in range(-5, -2)]
@@ -1184,17 +1178,7 @@ def main():
         else:
             # TODO: Replace sklearn.linear_model.SGDClassifier with spams or L1L2Py
             print "l1/l2 regularization"
-            # Use a subdirectory called enet
-            results_dir = "%s/enet" % args.results_dir
-            # Create results dir if it does not exist
-            if not os.path.isdir(results_dir):
-                sys.stdout.write("Creating %s\n" % args.results_dir)
-                try: 
-                    os.makedirs(results_dir)
-                except OSError:
-                    if not os.path.isdir(results_dir):
-                        raise
-
+            
             # Run the inner cross-validation for the l1/l2 regularization
             lbd_values = [0.01, 0.025, 0.05, 0.075, 1.]
             l1_ratio_values = [0.15, 0.5, 0.75, 1.]
