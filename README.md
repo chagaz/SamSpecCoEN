@@ -102,8 +102,8 @@ The `--enet` option allows you to run an elastic net (l1/l2 regularization). Cur
 
 Task list
 =========
-- [ ] Implement the bits that read and process the given network (.sif) in `CoExpressionNetwork.py`
-- [ ] Test the implementation of `sum`, `euclide` and `euclthr`
+- [ ] Test the implementation of read/process .sif network in `CoExpressionNetwork.py`
+- [ ] Test the implementation of `sum`, `euclide` and `euclthr` in `CoExpressionNetwork.py`
 - [ ] Check whether run_OuterCrossVal.py is redundant with OuterCrossVal.py
 - [ ] Test the implementation of the cross-validation procedure
 - [ ] Compare the performance of the l1-regularized subtype-stratified cross-validation using the various edge weights as features to that of using directly the gene expression levels as features.

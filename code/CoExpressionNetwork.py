@@ -72,7 +72,7 @@ class CoExpressionNetwork(object):
         self.expression_data = expression_data#[:, :800] # TODO Only for testing!
         self.sample_labels = sample_labels
         self.refc_data = refc_data
-        self.gene_names = gene_names
+        self.gene_names = list(gene_names)
 
         self.num_samples, self.num_genes = self.expression_data.shape
 
@@ -141,7 +141,7 @@ class CoExpressionNetwork(object):
                 <index of gene 1> <index of gene 2>
             By convention, the index of gene 1 is smaller than that of gene 2.
         """
-
+        
         # Load set of edges
         edges_set = set([]) # (gene_idx_1, gene_idx_2)
         # gene_idx_1 < gene_idx_2
@@ -165,45 +165,37 @@ class CoExpressionNetwork(object):
                     e = (gene_idx_2, gene_idx_1)
                 edges_set.add(e)
         f.close()  
-
         edges_list = np.array(list(edges_set))
+        self.num_edges = len(edges_list)
 
         # Restrict CoExpressionNetwork data to the genes that are in the network
-        # TODO based on
-        genes_in_network = list(set(np.array([list(x) for x in edges_list]).flatten()))
+        genes_in_network = list(set(np.array([list(e) for e in edges_list]).flatten()))
         genes_in_network.sort()
-        X_in_ntwk = X[:, genes_in_network]
+        self.expression_data = self.expression_data[:, genes_in_network]
+        self.num_genes = len(genes_in_network)
 
         # Create self.edges
-        # that is, edges in format (idx_1, idx_2)
-        # where idx_1, idx_2 are indices in X_in_ntwk
-        # TODO
+        # that is, edges in format [idx_1, idx_2]
+        # where idx_1, idx_2 are indices in the new self.expression_data
+        # Currently, in edges_list, idx_1, idx_2 are indices in self.gene_names
+        self.edges = np.array([[genes_in_network.index(e[0]),
+                               genes_in_network.index(e[1])] for e in edges_list])
         
-
-        # Create ntwk_skeleton from edges_list
-        # TODO
-
+        # Create self.ntwk_skeleton (upper triangular) from edges_list
+        self.ntwk_skeleton = np.zeros((self.num_genes, self.num_genes))
+        for e in self.edges:
+            if e[0] < e[1]:
+                self.ntwk_skeleton[e[0], e[1]] = 1
+            else:
+                self.ntwk_skeleton[e[1], e[0]] = 1
         
-        # Only keep the upper triangular matrix (it's symmetric)
-        self.ntwk_skeleton[np.tril_indices(self.num_genes)] = 0
-        
-        sys.stdout.write("A network skeleton of %d edges was read.\n" % \
+        sys.stdout.write("A network skeleton of %d edges was processed.\n" % \
                          np.count_nonzero(self.ntwk_skeleton))
 
         # Save edges to file
         edges_f = '%s/edges.gz' % out_path
-
-        # # List non-zero indices (i.e edges)
-        # self.edges = np.nonzero(self.global_network)
-        # self.edges = np.array([self.edges[0], self.edges[1]], dtype='int').transpose()
-        # self.num_edges = self.edges.shape[0]
-        
         np.savetxt(edges_f, self.edges, fmt='%d')
         sys.stdout.write("Network skeleton edges saved to %s\n" % edges_f)
-
-
-
-
         
             
     def create_sam_spec_regline(self, regline_path):
@@ -236,16 +228,16 @@ class CoExpressionNetwork(object):
 
         weights_f = '%s/edge_weights.gz' % regline_path
 
-        # Compute edge weights
+        # Compute sample-specific edge weights
         weights = np.ones((self.num_edges, self.num_samples))
-
         for (edge_idx, e) in enumerate(self.edges):
             if plot_regline:
                 print "edge", e[0], e[1]
             # Fit regression line to reference data
+            n = self.refc_data.shape[0]
             reg_w = np.linalg.lstsq(np.array([ self.refc_data[:, e[0]],
-                                          np.ones(self.num_samples) ]).transpose(),
-                               self.refc_data[:, e[1]])[0]
+                                               np.ones(n) ]).transpose(),
+                                    self.refc_data[:, e[1]])[0]
             if plot_regline:
                 print reg_w[0], reg_w[1]
 
@@ -409,7 +401,7 @@ class CoExpressionNetwork(object):
             
 
 def run_whole_data(expression_data, sample_labels, gene_names,
-                   ppi_data, reference_data, out_dir)
+                   ppi_path, reference_data, out_dir):
     """ Compute sample-specific edge weights co-expression networks.
 
     Parameters
@@ -421,8 +413,8 @@ def run_whole_data(expression_data, sample_labels, gene_names,
         Array of reference gene expression data.
     gene_names: (num_genes, ) list
         List of gene names (same order as the data).
-    ppi_data:
-        # TODO
+    ppi_path: path
+        Path of the .sif file containing the PPI network to use.
     sample_labels: (num_samples, ) array
         Labels for the whole data.
     out_dir: path
@@ -462,8 +454,7 @@ def run_whole_data(expression_data, sample_labels, gene_names,
     co_expression_net.normalize_expression_data()
 
     # Read network skeleton
-    read_ntwk_skeleton(self, ppi_data, out_dir)
-    
+    co_expression_net.read_ntwk_skeleton(ppi_path, out_dir)
     
     # Create repertory in which to store co-expression networks (REGLINE)
     regline_path = "%s/regline" % out_dir
@@ -509,7 +500,7 @@ def run_whole_data(expression_data, sample_labels, gene_names,
     co_expression_net.create_sam_spec_euclthr(euclthr_path)
     
     
-def run_whole_data_aces(aces_data, ppi_data, refc_data, out_dir)
+def run_whole_data_aces(aces_data, ppi_path, refc_data, out_dir):
     """ Build sample-specific co-expression networks, from data in ACES format.
 
     If tr_indices is not None, use tr_indices and te_indices to determine train/test samples
@@ -520,8 +511,8 @@ def run_whole_data_aces(aces_data, ppi_data, refc_data, out_dir)
     ----------
     aces_data: datatypes.ExpressionDataset.ExpressionDataset
         Data in ACES format, read using HDF5GroupToExpression_dataset.
-    ppi_data: 
-        #TODO
+    ppi_path: path
+        Path of the .sif file containing the PPI network to use.
     refc_data: (num_refc_samples, num_genes) array
         Reference gene expression data.    
     out_dir: path
@@ -543,7 +534,7 @@ def run_whole_data_aces(aces_data, ppi_data, refc_data, out_dir)
         for each sample (training samples only if self.tr_indices)
     """
     run_whole_data(aces_data.expressionData, aces_data.patientClassLabels,
-                   aces_data.geneLabels, ppi_data, refc_data, out_dir)
+                   aces_data.geneLabels, ppi_path, refc_data, out_dir)
                    
 
 
@@ -583,13 +574,13 @@ def main():
 
     # Get expression data, sample labels.
     # Do not normalize the data while loading it (so as not to use test data for normalization).
-    f = h5py.File("../ACES/experiments/data/U133A_combat.h5")
+    f = h5py.File("../ACES/experiments/data/U133A_combat.h5", "r")
     aces_data = HDF5GroupToExpressionDataset(f['U133A_combat_%s' % args.dataset_name],
                                             checkNormalise=False)
     f.close()
 
     # Reference expression data
-    f = h5py.File("%s/MTAB-62.h5" % args.refc_dir)
+    f = h5py.File(args.refc_data, "r")
     refc_data = HDF5GroupToExpressionDataset(f['MTAB-62'], checkNormalise=False)
     f.close()
 
@@ -604,7 +595,7 @@ def main():
         refc_reordered[:, ix] = refc_data.expressionData[:, reordered_genes[ix]]
 
     # Compute network edges
-    run_whole_data_aces(aces_data, args.ppi, args.out_dir, refc_reordered)
+    run_whole_data_aces(aces_data, args.ppi, refc_reordered, args.out_dir)
     
 
 if __name__ == "__main__":
