@@ -72,25 +72,24 @@ Cross-validation experiments
 ----------------------------
 The class for running a cross-validation experiment is `OuterCrossVal.py`. Internally, it uses `InnerCrossVal.py` to determine the best hyperparameters for the learning algorithm.
 
-`python OuterCrossVal.py ACES outputs/U133A_combat_DMFS lioness results -o 5 -k 5 -m 400`
-runs a 5-fold cross-validation experiment on the data stored in folds under `outputs/U133A_combat_DMFS`, for the LIONESS edge weights, using a 5-fold inner cross-validation loop, and returning at most 400 genes (following ACES/FERAL). It uses both an l1-regularized logistic regression (results under the ```results/``` folder) and an l1/l2 (or Elastic Net)-regularized logistic regression  (results under the ```results/enet``` folder) .
-
 ### Subtype-stratified cross-validation 
 This experiment is meant to be comparable to that of the FERAL paper: we build 10-fold cross-validations, with each fold having roughly the same number of samples from each class, and repeat this 10 times.
 
 #### Create train/test folds
-` python setUpSubTypeStratifiedCV_writeIndices.py ../../SamSpecCoEN RFS 10 0`
-creates train and test indices for `repeat0` of the cross-validation procedure, stored as `train.indices` and `test.indices` under `../../SamSpecCoEN/outputs/U133A_combat_RFS/subtype_stratified/repeat0/<fold idx>/` for `<fold idx>` ranging from 0 to 9.
-
-Note that here `../../SamSpecCoEN/outputs` is equivalent to `../outputs` but this is meant to run in a flexible way (and in particular, on a cluster where the data is not stored in the same repository as the code).
+` python setUpSubTypeStratifiedCV_writeIndices.py RFS ../outputs/U133A_combat_RFS/subtype_stratified RFS 10 0`
+creates train and test indices for `repeat0` of the cross-validation procedure, stored as `train.indices` and `test.indices` under `../outputs/U133A_combat_RFS/subtype_stratified/repeat0/<fold idx>/` for `<fold idx>` ranging from 0 to 9.
 
 #### Inner cross-validation
-`python InnerCrossVal.py ../ACES ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0 regline ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/regline/fold0 -k 5 -m 10000` 
+`python InnerCrossVal.py ../ACES ../outputs/U133A_combat_RFS ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0/ regline -k 5 -m 1000` 
 runs an inner cross-validation loop (5 folds) on the training part of fold 0 of repeat 0, using the REGLINE edge weights as features, to determine optimal parameter(s) of the learning algorithm.
+Results are stored under `../outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0/results/`
+
+To run on all 10 folds:
+`for fix in {0..9}; do python InnerCrossVal.py ../ACES ../outputs/U133A_combat_RFS ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold${fix}/ regline -k 5 -m 1000; done` 
 
 #### Outer cross-validation
 Once the optimal parameters have been determined by inner cross-validation,
-`python run_OuterCrossVal.py ../ACES ../outputs/U133A_combat_RFS/subtype_stratified/repeat0 regline ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/regline -o 10 -k 5 -m 1000`
+`python OuterCrossVal.py ../ACES ../outputs/U133A_combat_RFS/subtype_stratified/repeat0 regline ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/regline -o 10 -k 5 -m 1000`
 runs the outer loop of 10-fold cross-validation on repeat0, using the REGLINE edge weights as features, and selecting at most 1000 features.
 
 The `--nodes` option allows you to run the exact same algorithm on the exact same folds, but using the node weights (i.e. gene expression data) directly instead of the edge weights, for comparison purposes (the network type is required but won't be used).
@@ -99,14 +98,41 @@ The `--sfan` option allows you to run sfan [Azencott et al., 2013] to select nod
 
 The `--enet` option allows you to run an elastic net (l1/l2 regularization). Currently, it uses scikit-learn's implementation, which has some issues. This should be re-implemented using [spams](http://spams-devel.gforge.inria.fr/) or [L1L2py](https://pypi.python.org/pypi/L1L2Py/1.0.5). 
 
+#### Structure of the outputs/results directory
+under `../outputs/U133A_combat_RFS/subtype_stratified/repeat<repeat_index>`:
+```
+- fold<fold_index>/: 
+  - test.indices, test.labels, train.indices, train.labels
+  - results/:
+    - <network type>/: ('regline', 'euclide', etc.)
+      - featuresList, predValues, yte: results of inner cross-validation (l1-regularized logistic regression on edge weights).
+      - enet/:
+          featuresList, predValues, yte: results of inner cross-validation (l1/l2-regularized logistic regression on edge weights).
+     - nodes/:
+        - featuresList, predValues, yte: results of inner cross-validation (l1-regularized logistic regression on node weights).
+        - enet/:
+           featuresList, predValues, yte: results of inner cross-validation (l1/l2-regularized logistic regression on node weights).
+        - sfan/:
+            featuresList, predValues, yte: results of inner cross-validation (sfan on node weights).
+            
+- results/:
+    - <network type>/: ('regline', 'euclide', etc.)
+      - cix.pdf, fov.pdf, results.txt: results of outer cross-validation (l1-regularized logistic regression on edge weights).
+      - enet/:
+          cix.pdf, fov.pdf, results.txt: results of outer cross-validation (l1/l2-regularized logistic regression on edge weights).
+     - nodes/:
+        - cix.pdf, fov.pdf, results.txt: results of outer cross-validation (l1-regularized logistic regression on node weights).
+        - enet/:
+           cix.pdf, fov.pdf, results.txt: results of outer cross-validation (l1/l2-regularized logistic regression on node weights).
+        - sfan/:
+            cix.pdf, fov.pdf, results.txt: results of outer cross-validation (sfan on node weights).
+```
 
 Task list
 =========
-- [ ] Test the implementation of read/process .sif network in `CoExpressionNetwork.py`
-- [ ] Test the implementation of `sum`, `euclide` and `euclthr` in `CoExpressionNetwork.py`
-- [ ] Check whether run_OuterCrossVal.py is redundant with OuterCrossVal.py
-- [ ] Test the implementation of the cross-validation procedure
+- [ ] Validate the different weights of computing edge weights (i.e. ensure they do what they're supposed to) in CoExpressionNetwork.py
 - [ ] Compare the performance of the l1-regularized subtype-stratified cross-validation using the various edge weights as features to that of using directly the gene expression levels as features.
+- [ ] Propose new weights of computing edge weights.
 - [ ] Implement the `--enet` option with [spams](http://spams-devel.gforge.inria.fr/) or [L1L2py](https://pypi.python.org/pypi/L1L2Py/1.0.5). 
 
 
