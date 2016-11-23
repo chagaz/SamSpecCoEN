@@ -100,7 +100,7 @@ def main():
 
     else:
         # Initialize OuterCrossVal
-        ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.network_data_path, 
+        ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.repeat_path, 
                                           args.network_type, num_samples,
                                           args.num_inner_folds, args.num_outer_folds, 
                                           max_nr_feats=args.max_nr_feats,
