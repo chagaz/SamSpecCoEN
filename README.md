@@ -56,6 +56,7 @@ ArrayExpress E-MTAB-62
 This is a reference healthy population data.
 * Download from [https://www.ebi.ac.uk/arrayexpress/experiments/E-MTAB-62/](ArrayExpress)
 * Store under ArrayExpress/ at the root of this repository
+* run `cd code; python preprocess-MTAB-62.py` to pre-process the data (similar normalization as the ACES data).
 
 Usage
 =====
