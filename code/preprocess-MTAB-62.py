@@ -80,7 +80,7 @@ def main():
 
     # Save data into .dat file
     np.savetxt(datafile, D, fmt='%s', comments='',
-               delimiter=" ", header=" ".join(['"%s"' % x for x in gene_names[2:]]))
+               delimiter=" ", header=" ".join(['"%s"' % x for x in gene_names]))
 
     # Read the data as ExpressionDataset
     (affyIDs, patientIDs, exprMatrix, exprs) = mapData.readExpressionData(datafile)
