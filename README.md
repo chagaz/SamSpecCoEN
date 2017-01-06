@@ -77,7 +77,7 @@ The class for running a cross-validation experiment is `OuterCrossVal.py`. Inter
 This experiment is meant to be comparable to that of the FERAL paper: we build 10-fold cross-validations, with each fold having roughly the same number of samples from each class, and repeat this 10 times.
 
 #### Create train/test folds
-` python setUpSubTypeStratifiedCV_writeIndices.py RFS ../outputs/U133A_combat_RFS/subtype_stratified RFS 10 0`
+` python setUpSubTypeStratifiedCV_writeIndices.py RFS ../outputs/U133A_combat_RFS/subtype_stratified 10 0`
 creates train and test indices for `repeat0` of the cross-validation procedure, stored as `train.indices` and `test.indices` under `../outputs/U133A_combat_RFS/subtype_stratified/repeat0/<fold idx>/` for `<fold idx>` ranging from 0 to 9.
 
 #### Inner cross-validation
