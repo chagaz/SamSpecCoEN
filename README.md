@@ -67,7 +67,7 @@ The class for creating sample-specific co-expression neworks is `CoExpressionNet
 
 `python CoExpressionNetwork.py RFS ../ACES/experiments/data/KEGG_edges1210.sif ../ArrayExpress/postproc/MTAB-62.h5 ../outputs/U133A_combat_RFS`
 
-creates sample-specific coexpression networks for the entire dataset. The network structure (list of edges), which corresponds to that given by the .sif file `../ACES/experiments/data/KEGG_edges1210.sif`, is stored under `../outputs/U133A_combat_RFS/edges.gz`. The weights are stored under `outputs/U122A_combat_DMFS/<method>/edges_weights.gz`, where `<method>` is one of `regline`, `sum`, `euclide`, `euclthr`.
+creates sample-specific coexpression networks for the entire dataset. The network structure (list of edges), which corresponds to that given by the .sif file `../ACES/experiments/data/KEGG_edges1210.sif`, is stored under `../outputs/U133A_combat_RFS/edges.gz`. The weights are stored under `outputs/U133A_combat_RFS/<method>/edges_weights.gz`, where `<method>` is one of `regline`, `sum`, `euclide`, `euclthr`.
 
 Cross-validation experiments
 ----------------------------
