@@ -311,7 +311,7 @@ class CoExpressionNetwork(object):
 
         for (edge_idx, e) in enumerate(self.edges):
             # Compute sum of node weights:
-            weights[edge_idx, :] = e[0] + e[1]
+            weights[edge_idx, :] = self.expression_data[:, e[0]] + self.expression_data[:, e[1]]
             
         # Save edge weights to file
         np.savetxt(weights_f, weights, fmt='%.5f')
@@ -351,7 +351,8 @@ class CoExpressionNetwork(object):
 
         for (edge_idx, e) in enumerate(self.edges):
             # Compute euclide distance between node weights:
-            weights[edge_idx, :] = 0.5 * np.sqrt(e[0]**2 + e[1]**2)
+            weights[edge_idx, :] = 0.5 * np.sqrt(self.expression_data[:, e[0]]**2 + \
+                                                 self.expression_data[:, e[1]]**2)
             
         # Save edge weights to file
         np.savetxt(weights_f, weights, fmt='%.5f')
@@ -392,7 +393,12 @@ class CoExpressionNetwork(object):
 
         for (edge_idx, e) in enumerate(self.edges):
             # Compute euclide distance between node weights:
-            weights[edge_idx, :] = np.where((e[0]>0) * (e[1]>0), 0.5 * np.sqrt(e[0]**2 + e[1]**2), 0)
+            A = self.expression_data[:, e[0]]>0
+            B = self.expression_data[:, e[1]]>0
+            weights[edge_idx, :] = np.where(A&B,
+                                            0.5 * np.sqrt(self.expression_data[:, e[0]]**2 + \
+                                                          self.expression_data[:, e[1]]**2),
+                                            0)
             
         # Save edge weights to file
         np.savetxt(weights_f, weights, fmt='%.5f')
@@ -456,15 +462,15 @@ def run_whole_data(expression_data, sample_labels, gene_names,
     # Read network skeleton
     co_expression_net.read_ntwk_skeleton(ppi_path, out_dir)
     
-    # Create repertory in which to store co-expression networks (REGLINE)
-    regline_path = "%s/regline" % out_dir
-    try: 
-        os.makedirs(regline_path)
-    except OSError:
-        if not os.path.isdir(regline_path):
-            raise
-    # Compute and store edge weights (REGLINE)
-    co_expression_net.create_sam_spec_regline(regline_path)
+    # # Create repertory in which to store co-expression networks (REGLINE)
+    # regline_path = "%s/regline" % out_dir
+    # try: 
+    #     os.makedirs(regline_path)
+    # except OSError:
+    #     if not os.path.isdir(regline_path):
+    #         raise
+    # # Compute and store edge weights (REGLINE)
+    # co_expression_net.create_sam_spec_regline(regline_path)
 
     
     # Create repertory in which to store co-expression networks (SUM)

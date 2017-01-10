@@ -29,7 +29,7 @@ def main():
             <k>/test.labels
                 List of (0/1) labels of the test set (one per line).
     Example:
-        $ python setUpSubTypeStratifiedCV_writeIndices.py RDS../outputs/U133A_combat_RFS/subtype_stratified 10 0
+        $ python setUpSubTypeStratifiedCV_writeIndices.py RFS ../outputs/U133A_combat_RFS/subtype_stratified 10 0
     
     Reference
     ---------
