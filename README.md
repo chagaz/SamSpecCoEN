@@ -90,7 +90,7 @@ To run on all 10 folds:
 
 #### Outer cross-validation
 Once the optimal parameters have been determined by inner cross-validation,
-`python OuterCrossVal.py ../ACES ../outputs/U133A_combat_RFS/subtype_stratified/repeat0 regline ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/regline -o 10 -k 5 -m 1000`
+`python OuterCrossVal.py ../ACES ../outputs/U133A_combat_RFS/ ../outputs/U133A_combat_RFS/subtype_stratified/repeat0 regline -o 10 -k 5 -m 1000`
 runs the outer loop of 10-fold cross-validation on repeat0, using the REGLINE edge weights as features, and selecting at most 1000 features.
 
 The `--nodes` option allows you to run the exact same algorithm on the exact same folds, but using the node weights (i.e. gene expression data) directly instead of the edge weights, for comparison purposes (the network type is required but won't be used).
