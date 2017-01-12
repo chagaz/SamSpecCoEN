@@ -1,7 +1,6 @@
 # @Author 
 # Chloe-Agathe Azencott
 # chloe-agathe.azencott@mines-paristech.fr
-# April 2016
 
 import argparse
 import h5py
@@ -16,11 +15,12 @@ import scipy.stats as st
 import sys
 
 from sklearn import metrics as skm
-orange_color = '#d66000'
-blue_color = '#005599'
 
 import InnerCrossVal
 
+orange_color = '#d66000'
+blue_color = '#005599'
+network_types = ['regline', 'mahalanobis', 'sum', 'euclide', 'euclthr'] # possible network weight types
 
 class OuterCrossVal(object):
     """ Manage the outer cross-validation loop for learning on sample-specific co-expression networks.
@@ -78,7 +78,7 @@ class OuterCrossVal(object):
         network_type: string
             Type of network to work with
             Correspond to a folder in dataFoldRoot
-            Possible value: 'regline', 'sum', 'euclide', 'euclthr'
+            Possible value taken from network_types
         nr_inner_folds: int
             Number of folds for the inner cross-validation loop.
         max_nr_feats: int
@@ -431,6 +431,30 @@ class OuterCrossVal(object):
         return cix_list
         
         
+    def compute_pearson(self):
+        """ Compute pairwise Pearson's correlations between indicator vectors of selected features.
+
+        Returns
+        -------
+        prs_list: list
+            List of pariwise Pearson's correlations between indicator vectors of selected features.
+
+        Reference
+        ---------
+        Nogueira & Brown (2016).
+        Measuring the Stability of Feature Selection, ECML 2016.
+        """
+        prs_list = []
+        for set_idx1 in range(len(self.features_list)):
+            feature_set1 = np.zeros((self.num_features, ))
+            feature_set1[self.features_list[set_idx1]] = 1
+            for set_idx2 in range(set_idx1+1, len(self.features_list)):
+                feature_set2 = np.zeros((self.num_features, ))
+                feature_set2[self.features_list[set_idx2]] = 1
+                prs_list.append(st.pearsonr(feature_set1, feature_set2)[0])
+        return prs_list
+
+
     def write_results(self, results_dir):
         """ Create results files.
 
@@ -445,13 +469,17 @@ class OuterCrossVal(object):
             Number of selected features (per fold)
             AUC
             Fisher overlaps (per fold)
-            Consistency index (per fold).
+            Consistency index (per fold)
+            Pearson's consistency (per fold).
 
         fov.pdf:
             Box plot of Fisher overlaps.
 
         cix.pdf:
             Box plot of consistencies.        
+
+        cix.pdf:
+            Box plot of Pearson consistencies.        
         """
 
         # Open results file for writing
@@ -475,6 +503,12 @@ class OuterCrossVal(object):
             f.write("%s\n" % ["%.2e" % x for x in cix_list])
             f.close()
 
+            # Write the stability (Pearson)
+            prs_list = self.compute_pearson()
+            f.write("Stability (Pearson):\t")
+            f.write("%s\n" % ["%.2e" % x for x in prs_list])
+            f.close()
+
         # Plot the stability (Fisher overlap)
         fov_fname = '%s/fov.pdf' % results_dir
         plt.figure()
@@ -489,6 +523,13 @@ class OuterCrossVal(object):
         plt.boxplot(cix_list, 0, 'gD')
         plt.title('Consistency Index')
         plt.savefig(cix_fname, bbox_inches='tight')
+
+        # Plot the stability (Pearson)
+        prs_fname = '%s/prs.pdf' % results_dir
+        plt.figure()
+        plt.boxplot(prs_list, 0, 'gD')
+        plt.title("Pearson's consistency'")
+        plt.savefig(prs_fname, bbox_inches='tight')
 
         
 def main():
@@ -508,6 +549,7 @@ def main():
         - final AUC
         - pairwise Fisher overlaps between sets of selected features
         - pairwise consistencies between sets of selected features
+        - pairwise Pearson consistencies between sets of selected features
     """
     parser = argparse.ArgumentParser(description="Cross-validate sample-specific co-expression networks",
                                      add_help=True)
@@ -530,9 +572,11 @@ def main():
     args = parser.parse_args()
 
     try:
-        assert args.network_type in ['regline', 'sum', 'euclide', 'euclthr']
+        assert args.network_type in network_types
     except AssertionError:
-        sys.stderr.write("network_type should be one of 'regline', 'sum', 'euclide', 'euclthr'.\n")
+        sys.stderr.write("network_type should be one of ")
+        sys.stderr.write(",".join([" '%s'" % nt for nt in network_types]))
+        sys.stderr.write(".\n")
         sys.stderr.write("Aborting.\n")
         sys.exit(-1)
 
