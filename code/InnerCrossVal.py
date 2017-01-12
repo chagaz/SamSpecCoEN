@@ -23,6 +23,8 @@ import spams # for elastic-net
 
 scale_data = False # whether to scale data before feeding it to l1-logreg
 
+network_types = ['regline', 'mahalanobis', 'sum', 'euclide', 'euclthr'] # possible network weight types
+
 class InnerCrossVal(object):
     """ Manage the inner cross-validation loop for learning on sample-specific co-expression networks.
 
@@ -78,7 +80,7 @@ class InnerCrossVal(object):
         network_type: string
             Type of network to work with
             Correspond to a folder in trte_root
-            Possible value: 'regline', 'sum', 'euclide', 'euclthr'
+            Possible value are taken from network_types
         nr_folds: int
             Number of (inner) cross-validation folds.
         max_nr_feats: int
@@ -92,9 +94,11 @@ class InnerCrossVal(object):
             Path to sfan code.
         """
         try:
-            assert network_type in ['regline', 'sum', 'euclide', 'euclthr']
+            assert network_type in network_types
         except AssertionError:
-            sys.stderr.write("network_type should be one of 'regline', 'sum', 'euclide', 'euclthr'.\n")
+            sys.stderr.write("network_type should be one of ")
+            sys.stderr.write(",".join([" '%s'" % nt for nt in network_types]))
+            sys.stderr.write(".\n")
             sys.stderr.write("Aborting.\n")
             sys.exit(-1)
 
@@ -1129,9 +1133,11 @@ def main():
     args = parser.parse_args()
 
     try:
-        assert args.network_type in ['regline', 'sum', 'euclide', 'euclthr']
+        assert args.network_type in network_types
     except AssertionError:
-        sys.stderr.write("network_type should be one of 'regline', 'sum', 'euclide', 'euclthr'.\n")
+        sys.stderr.write("network_type should be one of ")
+        sys.stderr.write(",".join([" '%s'" % nt for nt in network_types]))
+        sys.stderr.write(".\n")
         sys.stderr.write("Aborting.\n")
         sys.exit(-1)
 

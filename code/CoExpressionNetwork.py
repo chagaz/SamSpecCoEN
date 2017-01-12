@@ -278,6 +278,52 @@ class CoExpressionNetwork(object):
         sys.stdout.write("Regline edge weights saved to %s\n" % weights_f)
 
             
+    def create_sam_spec_mahalan(self, regline_path):
+        """ Create sample-specific co-expression networks,
+        using the MAHALAN approach.
+
+        The weight of the (x0, y0) edge is computed as
+        the Mahalanobis distance from (x0, y0) to the reference bivariate Gaussian distribution.
+
+        Parameters
+        ----------
+        mahalan_path: dirname
+            Name of the directory where to write the files describing the co-expression networks.
+        
+        Created files
+        -------------
+        edge_weights.gz:
+            gzipped file containing the (self.num_edges, self.num_samples) array
+            describing the edge weights for each sample.
+        """
+        try:
+            assert isinstance(self.ntwk_skeleton, np.ndarray)
+        except AssertionError:
+            sys.stderr.write("The network skeleton has not been read yet.\n")
+            sys.stderr.write("Call read_ntwk_skeleton first.\n")
+            sys.stderr.write("Aborting.\n")
+            sys.exit(-1)
+
+        weights_f = '%s/edge_weights.gz' % mahalan_path
+
+        # Compute sample-specific edge weights
+        weights = np.ones((self.num_edges, self.num_samples))
+        for (edge_idx, e) in enumerate(self.edges):
+            # Compute mu, sigma of reference distribution
+            data2d = np.vstack((self.refc_data[:, e[0]], self.refc_data[:, e[1]]))
+            mu = np.mean(data2d, axis=1)
+            sigma = np.cov(data2d)
+
+            # Compute Mahalanobis distances from samples to distribution:
+            tmp_centered = self.expression_data[:, [e[0], e[1]]] - mu
+            weights[edge_idx, :] = np.sqrt(np.dot(tmp_centered.T,
+                                                  np.dot(sigma, tmp_centered)))
+
+        # Save edge weights to file
+        np.savetxt(weights_f, weights, fmt='%.5f')
+        sys.stdout.write("Mahalan edge weights saved to %s\n" % weights_f)
+
+            
     def create_sam_spec_sum(self, sum_path):
         """ Create sample-specific co-expression networks,
         using the SUM approach.
@@ -437,6 +483,10 @@ def run_whole_data(expression_data, sample_labels, gene_names,
         gzipped file containing the (self.num_edges, self.num_samples) array
         describing the edge weights of the Regline co-expression networks
         for each sample.
+    out_dir/mahalan/edge_weights.gz:
+        gzipped file containing the (self.num_edges, self.num_samples) array
+        describing the edge weights of the Mahalanobis co-expression networks
+        for each sample.
     out_dir/sum/edge_weights.gz:
         gzipped file containing the (self.num_edges, self.num_samples) array
         describing the edge weights of the 'sum' co-expression networks
@@ -449,7 +499,6 @@ def run_whole_data(expression_data, sample_labels, gene_names,
         gzipped file containing the (self.num_edges, self.num_samples) array
         describing the edge weights of the 'euclide_th' co-expression networks
         for each sample.
-
     """
     # Create CoExpressionNetwork instance
     sys.stdout.write("Computing networks on whole data\n")
@@ -473,6 +522,17 @@ def run_whole_data(expression_data, sample_labels, gene_names,
     # co_expression_net.create_sam_spec_regline(regline_path)
 
     
+    # Create repertory in which to store co-expression networks (MAHALANOBIS)
+    sum_path = "%s/mahalan" % out_dir
+    try: 
+        os.makedirs(mahalan_path)
+    except OSError:
+        if not os.path.isdir(mahalan_path):
+            raise
+    # Compute and store edge weights (MAHALANOBIS)
+    co_expression_net.create_sam_spec_mahalan(mahalan_path)
+
+
     # Create repertory in which to store co-expression networks (SUM)
     sum_path = "%s/sum" % out_dir
     try: 
@@ -509,10 +569,6 @@ def run_whole_data(expression_data, sample_labels, gene_names,
 def run_whole_data_aces(aces_data, ppi_path, refc_data, out_dir):
     """ Build sample-specific co-expression networks, from data in ACES format.
 
-    If tr_indices is not None, use tr_indices and te_indices to determine train/test samples
-    for normalization and network weights parameters.
-    Otherwise, build on the entire given dataset.
-
     Parameters
     ----------
     aces_data: datatypes.ExpressionDataset.ExpressionDataset
@@ -537,7 +593,23 @@ def run_whole_data_aces(aces_data, ppi_path, refc_data, out_dir):
     out_dir/regline/edge_weights.gz:
         gzipped file containing the (self.num_edges, self.num_samples) array
         describing the edge weights of the Regline co-expression networks
-        for each sample (training samples only if self.tr_indices)
+        for each sample.
+    out_dir/mahalan/edge_weights.gz:
+        gzipped file containing the (self.num_edges, self.num_samples) array
+        describing the edge weights of the Mahalanobis co-expression networks
+        for each sample.
+    out_dir/sum/edge_weights.gz:
+        gzipped file containing the (self.num_edges, self.num_samples) array
+        describing the edge weights of the 'sum' co-expression networks
+        for each sample.
+    out_dir/euclide/edge_weights.gz:
+        gzipped file containing the (self.num_edges, self.num_samples) array
+        describing the edge weights of the 'euclide' co-expression networks
+        for each sample.
+    out_dir/euclthr/edge_weights.gz:
+        gzipped file containing the (self.num_edges, self.num_samples) array
+        describing the edge weights of the 'euclide_th' co-expression networks
+        for each sample.
     """
     run_whole_data(aces_data.expressionData, aces_data.patientClassLabels,
                    aces_data.geneLabels, ppi_path, refc_data, out_dir)
