@@ -19,7 +19,9 @@ from sklearn import metrics as skm
 from sklearn import cross_validation as skcv 
 from sklearn import preprocessing
 
-scale_data = True # whether to scale data before feeding it to l1-logreg
+import spams # for elastic-net 
+
+scale_data = False # whether to scale data before feeding it to l1-logreg
 
 class InnerCrossVal(object):
     """ Manage the inner cross-validation loop for learning on sample-specific co-expression networks.
@@ -617,15 +619,15 @@ class InnerCrossVal(object):
             Optimal value of the regularization parameter.
         """
         # Initialize logistic regression cross-validation classifier
-        print reg_params        
+        print reg_params
         cv_clf = sklm.LogisticRegressionCV(Cs=reg_params, penalty='l1', solver='liblinear',
-                                           cv=self.nr_folds, 
+                                           cv=self.nr_folds,
+                                           refit=True,
                                            class_weight='balanced', scoring='roc_auc')
 
         # Fit to training data
-        print self.x_tr.shape
-        print self.y_tr.shape
-
+        # print self.x_tr.shape
+        # print self.y_tr.shape
         if scale_data:
             x_scaled = preprocessing.scale(self.x_tr)
             cv_clf.fit(x_scaled, self.y_tr)
@@ -640,6 +642,8 @@ class InnerCrossVal(object):
         y_tr_pred = y_tr_pred[:, cv_clf.classes_.tolist().index(1)]
         print "\tTraining AUC:\t", skm.roc_auc_score(self.y_tr, y_tr_pred)
 
+        # print cv_clf.scores_
+        
         # Get optimal value of the regularization parameter.
         # If there are multiple equivalent values, return the first one.
         # Note: Small C = more regularization.
@@ -868,15 +872,15 @@ class InnerCrossVal(object):
 
     # ================== l1/l2-regularized logistic regression ==================
     def run_inner_enet_logreg(self, reg_params=[[10.**k for k in range(-3, 3)],
-                                                [.5, .75, .95]]):
+                                                [0.25, 0.5, 0.75]]):
         """ Run the inner loop, using an l1/l2-regularized logistic regression.
         
         Parameters
         ----------
         reg_params: list of list
-            Range of lambda and l1_ratio values to try out.
+            Range of lambda1 and lambda_ratio values to try out.
             Default: [[0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
-                      [0.5, 0.75., 0.95]]
+                      [0.25, 0.5, 0.75]]
         
         Returns
         -------
@@ -902,7 +906,7 @@ class InnerCrossVal(object):
         
 
     def run_inner_enet_logreg_write(self, resdir, reg_params=[[10.**k for k in range(-3, 3)],
-                                                              [.5, .75, .95]]):
+                                                              [0.25, 0.5, 0.75]]):
         """ Run the inner loop, using an l1/l2-regularized logistic regression.
         Save outputs to files.
         
@@ -911,9 +915,9 @@ class InnerCrossVal(object):
         resdir: path
             Path to dir where to save outputs
         reg_params: list of list
-            Range of lambda and l1_ratio values to try out.
+            Range of lambda1 and lambda_ratio values to try out.
             Default: [[0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
-                      [0.5, 0.75., 0.95]]
+                      [0.25, 0.5, 0.75]]
         
         Returns
         -------
@@ -949,16 +953,16 @@ class InnerCrossVal(object):
         
         
     def cv_inner_enet_logreg(self, reg_params=[[10.**k for k in range(-3, 3)],
-                                                              [.5, .75, .95]]):
+                                               [0.25, 0.5, 0.75]]):
         """ Compute the inner cross-validation loop to determine the best regularization parameter
         for an l1/l2-regularized logistic regression.
         
         Parameters
         ----------
         reg_params: list of list
-            Range of lambda and l1_ratio values to try out.
+            Range of lambda1 and lambda2 values to try out.
             Default: [[0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
-                      [0.5, 0.75., 0.95]]
+                      [0.25, 0.5, 0.75]]
         
         Returns
         -------
@@ -971,29 +975,37 @@ class InnerCrossVal(object):
 
         # Compute cross-validated AUCs for all parameters
         auc_dict = {}
-        for lbd in reg_params[0]:
-            for l1_ratio in reg_params[1]:
-                alpha = lbd / l1_ratio
-
-                # Initialize ENet classifier
-                clf = sklm.SGDClassifier(loss='log', penalty='elasticnet',
-                                         alpha=alpha, l1_ratio=l1_ratio,
-                                         n_iter=20,
-                                         class_weight='balanced')
+        for lbd1 in reg_params[0]:
+            for lbd_ratio in reg_params[1]:
+                spams_params = {'loss': 'logistic', 
+                                'regul': 'elastic-net', 
+                                'lambda1': lbd1,
+                                'lambda2': lbd_ratio * lbd1,
+                                'max_it':200}
                 y_true = []
                 y_pred = []
                 for tr, te in cross_validator:
-                    clf.fit(self.x_tr[tr, :], self.y_tr[tr])
-                    ytr_te_pred = clf.predict_proba(self.x_tr[te, :])
-                    ix = clf.classes_.tolist().index(1)
-                    y_pred.extend(ytr_te_pred[:, ix])
-                    y_true.extend(self.y_tr[te])            
+                    init_weights = np.zeros((self.x_tr.shape[1], 1), dtype=np.float64, order="FORTRAN")
+                    y_fortran = np.asfortranarray(np.reshape(self.y_tr[tr]*2-1,
+                                                             (self.y_tr[tr].shape[0], 1)), dtype=np.float64)
+                    x_fortran = np.asfortranarray(self.x_tr[tr, :], dtype=np.float64)
+
+                    # Train
+                    fit_weights = spams.fistaFlat(y_fortran, x_fortran, init_weights,
+                                                   False, **spams_params)
+                    print "numfeat %.d" % len(np.nonzero(fit_weights)[0])
+                    # Predict
+                    ytr_te_pred = np.dot(self.x_tr[te, :], fit_weights)
+                    y_pred.extend(ytr_te_pred[:, 0])
+                    y_true.extend(self.y_tr[te])
+                                                   
 
                 auc = skm.roc_auc_score(y_true, y_pred)
-                print "lambda %.2e" % lbd, "\talpha  %.2e" % alpha, "\tl1_ratio", l1_ratio, "\tauc", auc
+                print "\tlambda1 %.2e" % lbd1, "\tlambda2  %.2e" % (lbd_ratio * lbd1)
+                print "\tauc", auc
                 if not auc_dict.has_key(auc):
                     auc_dict[auc] = []
-                auc_dict[auc].append([lbd, l1_ratio])
+                auc_dict[auc].append([lbd1, lbd_ratio])
 
         # Get best parameters
         auc_values = auc_dict.keys()
@@ -1002,14 +1014,19 @@ class InnerCrossVal(object):
         best_reg_param = auc_dict[best_auc][0]
 
         # Quality of fit?
-        clf = sklm.SGDClassifier(loss='log', penalty='elasticnet',
-                                 alpha=(best_reg_param[0]/best_reg_param[1]),
-                                 n_iter=20,
-                                 l1_ratio=best_reg_param[1], 
-                                 class_weight='balanced')
-        clf.fit(self.x_tr, self.y_tr)
-        y_tr_pred = clf.predict_proba(self.x_tr)
-        y_tr_pred = y_tr_pred[:, clf.classes_.tolist().index(1)]
+        spams_params = {'loss': 'logistic', 
+                        'regul': 'elastic-net', 
+                        'lambda1': best_reg_param[0],
+                        'lambda2': best_reg_param[1]*best_reg_param[0],
+                        'max_it':200}       
+        init_weights = np.zeros((self.x_tr.shape[1], 1), dtype=np.float64, order="FORTRAN")
+        y_fortran = np.asfortranarray(np.reshape(self.y_tr*2-1,
+                                                 (self.y_tr.shape[0], 1)), dtype=np.float64)
+        x_fortran = np.asfortranarray(self.x_tr, dtype=np.float64)
+        fit_weights = spams.fistaFlat(y_fortran, x_fortran, init_weights,
+                                      False, **spams_params)
+
+        y_tr_pred = np.dot(self.x_tr, fit_weights)
         print "\tTraining AUC:\t", skm.roc_auc_score(self.y_tr, y_tr_pred)
 
         # Get optimal value of the regularization parameter.
@@ -1027,7 +1044,7 @@ class InnerCrossVal(object):
         ----------
         best_reg_param: float
             Optimal value of the regularization parameters.
-            [best_lambda, best_l1_ratio]
+            [best_lambda1, best_lambda2]
 
         Returns
         -------
@@ -1037,31 +1054,32 @@ class InnerCrossVal(object):
             List of indices of the selected features.
         """
         # Initialize logistic regression classifier
-        classif = sklm.SGDClassifier(loss='log', 
-                                     penalty='elasticnet',
-                                     alpha=(best_reg_param[0]/best_reg_param[1]),
-                                     l1_ratio=best_reg_param[1], 
-                                     n_iter=20,
-                                     class_weight='balanced')
+        spams_params = {'loss': 'logistic', 
+                        'regul': 'elastic-net', 
+                        'lambda1': best_reg_param[0],
+                        'lambda2': best_reg_param[1],
+                        'max_it':200}       
         
         # Train on the training set
-        classif.fit(self.x_tr, self.y_tr)
+        init_weights = np.zeros((self.x_tr.shape[1], 1), dtype=np.float64, order="FORTRAN")
+        y_fortran = np.asfortranarray(np.reshape(self.y_tr*2-1,
+                                                 (self.y_tr.shape[0], 1)), dtype=np.float64)
+        x_fortran = np.asfortranarray(self.x_tr, dtype=np.float64)
+        fit_weights = spams.fistaFlat(y_fortran, x_fortran, init_weights,
+                                      False, **spams_params)
 
         # Predict on the test set
-        pred_values = classif.predict_proba(self.x_te)
-
-        # Only get the probability estimates for the positive class
-        pred_values = pred_values[:, classif.classes_.tolist().index(1)]
+        pred_values = np.dot(self.x_te, fit_weights)
 
         # Quality of fit
         print "\tTest AUC:\t", skm.roc_auc_score(self.y_te, pred_values)
 
         # Get selected features
         # If there are less than self.max_nr_feats, these are the non-zero coefficients
-        features = np.where(classif.coef_[0])[0]
+        features = np.nonzero(fit_weights)[0]
         if len(features) > self.max_nr_feats:
             # Prune the coefficients with lowest values
-            features = np.argsort(classif.coef_[0])[-self.max_nr_feats:]
+            features = np.argsort(fit_weights)[-self.max_nr_feats:]
 
         print "\tNumber of selected features:\t", len(features)
 
@@ -1170,20 +1188,19 @@ def main():
             # Run the inner cross-validation for the l1 regularization
             print "L1 regularization"
             icv.run_inner_l1_logreg_write(args.results_dir,
-                                          reg_params=[2.**k for k in range(-7, -1)])
+                                          reg_params=[2.**k for k in range(-7, 0)])
         # ========= End l1 regularization =========
 
 
         # ========= l1/l2 regularization =========
         else:
-            # TODO: Replace sklearn.linear_model.SGDClassifier with spams or L1L2Py
             print "l1/l2 regularization"
             
             # Run the inner cross-validation for the l1/l2 regularization
-            lbd_values = [0.01, 0.025, 0.05, 0.075, 1.]
-            l1_ratio_values = [0.15, 0.5, 0.75, 1.]
-            icv.run_inner_enet_logreg_write(results_dir,
-                                            reg_params=[lbd_values, l1_ratio_values])
+            l1_values = [2.**k for k in range(-8, -2)]
+            lbd_ratio_values = [0.5, 1.0, 1.5]
+            icv.run_inner_enet_logreg_write(args.results_dir,
+                                            reg_params=[l1_values, lbd_ratio_values])
         # ========= End l1/l2 regularization =========
 
 
