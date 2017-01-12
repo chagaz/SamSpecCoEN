@@ -23,7 +23,7 @@ import spams # for elastic-net
 
 scale_data = False # whether to scale data before feeding it to l1-logreg
 
-network_types = ['regline', 'mahalanobis', 'sum', 'euclide', 'euclthr'] # possible network weight types
+network_types = ['regline', 'mahalan', 'sum', 'euclide', 'euclthr'] # possible network weight types
 
 class InnerCrossVal(object):
     """ Manage the inner cross-validation loop for learning on sample-specific co-expression networks.

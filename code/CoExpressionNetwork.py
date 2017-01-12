@@ -278,7 +278,7 @@ class CoExpressionNetwork(object):
         sys.stdout.write("Regline edge weights saved to %s\n" % weights_f)
 
             
-    def create_sam_spec_mahalan(self, regline_path):
+    def create_sam_spec_mahalan(self, mahalan_path):
         """ Create sample-specific co-expression networks,
         using the MAHALAN approach.
 
@@ -315,9 +315,11 @@ class CoExpressionNetwork(object):
             sigma = np.cov(data2d)
 
             # Compute Mahalanobis distances from samples to distribution:
-            tmp_centered = self.expression_data[:, [e[0], e[1]]] - mu
-            weights[edge_idx, :] = np.sqrt(np.dot(tmp_centered.T,
-                                                  np.dot(sigma, tmp_centered)))
+            # tmp_centered = self.expression_data[:, [e[0], e[1]]] - mu
+            for i in range(self.num_samples):
+                weights[edge_idx, i] = np.sqrt(np.dot((self.expression_data[i, [e[0], e[1]]] - mu).T,
+                                                      np.dot(sigma,
+                                                             (self.expression_data[i, [e[0], e[1]]] - mu))))
 
         # Save edge weights to file
         np.savetxt(weights_f, weights, fmt='%.5f')
@@ -523,7 +525,7 @@ def run_whole_data(expression_data, sample_labels, gene_names,
 
     
     # Create repertory in which to store co-expression networks (MAHALANOBIS)
-    sum_path = "%s/mahalan" % out_dir
+    mahalan_path = "%s/mahalan" % out_dir
     try: 
         os.makedirs(mahalan_path)
     except OSError:
@@ -533,37 +535,37 @@ def run_whole_data(expression_data, sample_labels, gene_names,
     co_expression_net.create_sam_spec_mahalan(mahalan_path)
 
 
-    # Create repertory in which to store co-expression networks (SUM)
-    sum_path = "%s/sum" % out_dir
-    try: 
-        os.makedirs(sum_path)
-    except OSError:
-        if not os.path.isdir(sum_path):
-            raise
-    # Compute and store edge weights (SUM)
-    co_expression_net.create_sam_spec_sum(sum_path)
+    # # Create repertory in which to store co-expression networks (SUM)
+    # sum_path = "%s/sum" % out_dir
+    # try: 
+    #     os.makedirs(sum_path)
+    # except OSError:
+    #     if not os.path.isdir(sum_path):
+    #         raise
+    # # Compute and store edge weights (SUM)
+    # co_expression_net.create_sam_spec_sum(sum_path)
 
     
-    # Create repertory in which to store co-expression networks (EUCLIDE)
-    euclide_path = "%s/euclide" % out_dir
-    try: 
-        os.makedirs(euclide_path)
-    except OSError:
-        if not os.path.isdir(euclide_path):
-            raise
-    # Compute and store edge weights (EUCLIDE)
-    co_expression_net.create_sam_spec_euclide(euclide_path)
+    # # Create repertory in which to store co-expression networks (EUCLIDE)
+    # euclide_path = "%s/euclide" % out_dir
+    # try: 
+    #     os.makedirs(euclide_path)
+    # except OSError:
+    #     if not os.path.isdir(euclide_path):
+    #         raise
+    # # Compute and store edge weights (EUCLIDE)
+    # co_expression_net.create_sam_spec_euclide(euclide_path)
 
     
-    # Create repertory in which to store co-expression networks (EUCLTHR)
-    euclthr_path = "%s/euclthr" % out_dir
-    try: 
-        os.makedirs(euclthr_path)
-    except OSError:
-        if not os.path.isdir(euclthr_path):
-            raise
-    # Compute and store edge weights (EUCLTHR)
-    co_expression_net.create_sam_spec_euclthr(euclthr_path)
+    # # Create repertory in which to store co-expression networks (EUCLTHR)
+    # euclthr_path = "%s/euclthr" % out_dir
+    # try: 
+    #     os.makedirs(euclthr_path)
+    # except OSError:
+    #     if not os.path.isdir(euclthr_path):
+    #         raise
+    # # Compute and store edge weights (EUCLTHR)
+    # co_expression_net.create_sam_spec_euclthr(euclthr_path)
     
     
 def run_whole_data_aces(aces_data, ppi_path, refc_data, out_dir):
