@@ -26,9 +26,11 @@ Propositions:
 
 
 1. REGLINE: For a given sample, the edge weight is the distance of that sample to the regression line fitting the expression of both genes, *on a healthy reference population*. This quantifies how much this sample deviates from the "normal" behaviour.  
-2. SUM: For a given sample, the weight of edge (x_1, x_2) is x_1+x_2.
-3. EUCLIDE: For a given sample, the weight of edge (x_1, x_2) is the Euclidean distance between x_1 and x_2.
-4. EUCLTHR: For a given sample, the weight of edge (x_1, x_2) is the Euclidean distance between x_1 and x_2, unless x_1 or x_2 is negative, in which case it is 0. (Rationale: the edge can't be "on" if one of the genes is underexpressed).
+2. MAHALANOBIS: For a given sample, the edge weight is the Mahalanobis distance of that sample to the 2D-Gaussian fitting the expression of both genes, *on a healthy reference population*. This quantifies how much this sample deviates from the "normal" behaviour.
+3. SUM: For a given sample, the weight of edge (x_1, x_2) is x_1+x_2.
+4. EUCLIDE: For a given sample, the weight of edge (x_1, x_2) is the Euclidean distance between x_1 and x_2.
+5. EUCLTHR: For a given sample, the weight of edge (x_1, x_2) is the Euclidean distance between x_1 and x_2, unless x_1 or x_2 is negative, in which case it is 0. (Rationale: the edge can't be "on" if one of the genes is underexpressed).
+
 
 Evaluation:
 While one of the goals here is to use network-specific algorithms, at first we want to see whether we can build edge weights that are at least as expressive as node weights (that is to say, gene expression levels). We quantify this by cross-validated performance of a L1-regularized logistic regression trained on these weights.
@@ -42,6 +44,7 @@ Python packages
 * numpy  
 * memory_profiler (optional, for profiling memory usage)
 * timeit (optional, for timing functions)
+* spams (for elastic-net), see http://spams-devel.gforge.inria.fr/ 
 
 ACES
 ----
@@ -67,7 +70,7 @@ The class for creating sample-specific co-expression neworks is `CoExpressionNet
 
 `python CoExpressionNetwork.py RFS ../ACES/experiments/data/KEGG_edges1210.sif ../ArrayExpress/postproc/MTAB-62.h5 ../outputs/U133A_combat_RFS`
 
-creates sample-specific coexpression networks for the entire dataset. The network structure (list of edges), which corresponds to that given by the .sif file `../ACES/experiments/data/KEGG_edges1210.sif`, is stored under `../outputs/U133A_combat_RFS/edges.gz`. The weights are stored under `outputs/U133A_combat_RFS/<method>/edges_weights.gz`, where `<method>` is one of `regline`, `sum`, `euclide`, `euclthr`.
+creates sample-specific coexpression networks for the entire dataset. The network structure (list of edges), which corresponds to that given by the .sif file `../ACES/experiments/data/KEGG_edges1210.sif`, is stored under `../outputs/U133A_combat_RFS/edges.gz`. The weights are stored under `outputs/U133A_combat_RFS/<method>/edges_weights.gz`, where `<method>` is one of `regline`, `mahalanobis`, `sum`, `euclide`, `euclthr`.
 
 Cross-validation experiments
 ----------------------------
@@ -131,10 +134,10 @@ under `../outputs/U133A_combat_RFS/subtype_stratified/repeat<repeat_index>`:
 
 Task list
 =========
-- [ ] Validate the different weights of computing edge weights (i.e. ensure they do what they're supposed to) in CoExpressionNetwork.py
+- [x] Validate the different weights of computing edge weights (i.e. ensure they do what they're supposed to) in CoExpressionNetwork.py
 - [ ] Compare the performance of the l1-regularized subtype-stratified cross-validation using the various edge weights as features to that of using directly the gene expression levels as features.
-- [ ] Propose new weights of computing edge weights.
-- [ ] Implement the `--enet` option with [spams](http://spams-devel.gforge.inria.fr/) or [L1L2py](https://pypi.python.org/pypi/L1L2Py/1.0.5). 
+- [ ] Propose new ways of computing edge weights.
+- [x] Implement the `--enet` option with [spams](http://spams-devel.gforge.inria.fr/) or [L1L2py](https://pypi.python.org/pypi/L1L2Py/1.0.5). 
 
 
 
