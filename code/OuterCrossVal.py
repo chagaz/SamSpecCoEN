@@ -9,6 +9,9 @@ import matplotlib # in a non-interactive environment
 matplotlib.use('Agg') # in a non-interactive environment
 import matplotlib.pyplot as plt
 
+import warnings
+warnings.filterwarnings("error", category=RuntimeWarning)
+
 import numpy as np
 import os
 import scipy.stats as st
@@ -20,7 +23,29 @@ import InnerCrossVal
 
 orange_color = '#d66000'
 blue_color = '#005599'
-network_types = ['regline', 'mahalanobis', 'sum', 'euclide', 'euclthr'] # possible network weight types
+network_types = ['regline', 'mahalan', 'sum', 'euclide', 'euclthr'] # possible network weight types
+
+def color_boxplot(box):
+    """
+    Customize the colors of a box plot.
+
+    Input
+    -----
+    box: dict
+        matplotlib boxplot dictionary, as returned by plt.boxplot(patch_artist=True)
+    """
+    for patch in box['boxes']:
+        patch.set_edgecolor(blue_color)
+        patch.set_facecolor('white')
+    for patch in box['medians']:
+        patch.set_color(orange_color)
+    for patch in box['whiskers']:
+        patch.set_color(blue_color)            
+    for patch in box['fliers']:
+        patch.set_color(blue_color)            
+    for patch in box['caps']:
+        patch.set_color(blue_color)            
+
 
 class OuterCrossVal(object):
     """ Manage the outer cross-validation loop for learning on sample-specific co-expression networks.
@@ -292,17 +317,20 @@ class OuterCrossVal(object):
             else:
                 innercv_results_dir = '%s/fold%d/results/%s/' % (self.innercv_root, fold_idx,
                                                                  self.network_type)
+
             if subdir_name:
                 innercv_results_dir = '%s/%s' % (innercv_results_dir, subdir_name)
 
             yte_fname = '%s/yte' % innercv_results_dir
-            self.true_labels[te_indices] = np.loadtxt(yte_fname, dtype='int')
-
             pred_values_fname = '%s/predValues' % innercv_results_dir        
-            self.pred_values[te_indices] = np.loadtxt(pred_values_fname)
-
             features_list_fname = '%s/featuresList' % innercv_results_dir
-            self.features_list.append(np.loadtxt(features_list_fname, dtype='int'))
+
+            # Only use fold if number of selected features is NOT maximal
+            fold_features_list = np.loadtxt(features_list_fname, dtype='int')
+            if not len(fold_features_list) == self.max_nr_feats:
+                self.true_labels[te_indices] = np.loadtxt(yte_fname, dtype='int')
+                self.pred_values[te_indices] = np.loadtxt(pred_values_fname)
+                self.features_list.append(fold_features_list)
 
         # Convert probability estimates in labels
         self.pred_labels = np.array(self.pred_values > 0, dtype='int')
@@ -399,7 +427,11 @@ class OuterCrossVal(object):
                                 len(feature_set2.difference(feature_set1))],
                                [len(feature_set1.difference(feature_set2)),
                                 len(allFeatures.difference(feature_set1.union(feature_set2)))]]
-                fov_list.append(-np.log10(st.fisher_exact(contingency, alternative='greater')[1]))
+                pval = st.fisher_exact(contingency, alternative='greater')[1]
+                if pval > 0:
+                    fov_list.append(-np.log10(pval))
+                else:
+                    fov_list.append(-200)
         return fov_list
 
 
@@ -455,6 +487,47 @@ class OuterCrossVal(object):
         return prs_list
 
 
+    def compute_overlap_histogram(self):
+        """ Compute the number of features selected by exactly 1 to exactly k folds.
+
+        Returns
+        -------
+        overlaps_list = list
+            List of numbers of features selected by exactly 1 to exactly k folds.
+        """
+        selected_features_dict = {} # feat_idx:number_of_times_selected
+        for feature_set in self.features_list:
+            for feat_idx in feature_set:
+                if not selected_features_dict.has_key(feat_idx):
+                    selected_features_dict[feat_idx] = 1
+                else:
+                    selected_features_dict[feat_idx] += 1
+        num_selected_features = len(selected_features_dict.keys())
+
+        overlaps_dict = {} # number_of_times_selected:number_of_features
+        for feat_idx, number_of_times_selected in selected_features_dict.iteritems():
+            try:
+                assert number_of_times_selected <= len(self.features_list)
+            except AssertionError:
+                print feat_idx, number_of_times_selected
+                sys.stderr.write("Error in computing the number of times a feature was selected.\n")
+                sys.stderr.write("Aborting.\n")
+                sys.exit(-1)
+            if not overlaps_dict.has_key(number_of_times_selected):
+                overlaps_dict[number_of_times_selected] = 1
+            else:
+                overlaps_dict[number_of_times_selected] += 1
+
+        overlaps_list = []
+        for number_of_times_selected in range(1, len(self.features_list)+1):
+            if not overlaps_dict.has_key(number_of_times_selected):
+                overlaps_list.append(0.)
+            else:
+                #overlaps_list.append(float(overlaps_dict[number_of_times_selected])/num_selected_features)
+                overlaps_list.append(overlaps_dict[number_of_times_selected])
+        return overlaps_list
+        
+        
     def write_results(self, results_dir):
         """ Create results files.
 
@@ -467,6 +540,7 @@ class OuterCrossVal(object):
         -------------
         results.txt:
             Number of selected features (per fold)
+            Average number of selected features
             AUC
             Fisher overlaps (per fold)
             Consistency index (per fold)
@@ -478,16 +552,27 @@ class OuterCrossVal(object):
         cix.pdf:
             Box plot of consistencies.        
 
-        cix.pdf:
+        prs.pdf:
             Box plot of Pearson consistencies.        
+
+        ovl.pdf:
+            Bar chat of raction of selected features selected exactly k times.
         """
 
         # Open results file for writing
         res_fname = '%s/results.txt' % results_dir
         with open(res_fname, 'w') as f:
+            # Write number of folds used
+            f.write("Number of folds used:\t")
+            f.write("%s\n" % len(self.features_list))
+            
             # Write number of selected features
             f.write("Number of features selected per fold:\t")
             f.write("%s\n" % " ".join(["%d" % len(x) for x in self.features_list]))
+
+            # Write average number of selected features
+            f.write("Average number of selected features:\t")
+            f.write("%d\n" % np.mean([len(x) for x in self.features_list]))
 
             # Write AUC
             f.write("AUC:\t%.2f\n" % self.compute_auc())
@@ -501,18 +586,24 @@ class OuterCrossVal(object):
             cix_list = self.compute_consistency()
             f.write("Stability (Consistency Index):\t")
             f.write("%s\n" % ["%.2e" % x for x in cix_list])
-            f.close()
 
             # Write the stability (Pearson)
             prs_list = self.compute_pearson()
             f.write("Stability (Pearson):\t")
             f.write("%s\n" % ["%.2e" % x for x in prs_list])
+
+            # Write the histogram of overlaps
+            overlaps_list = self.compute_overlap_histogram()
+            f.write("Number of features selected k times:\t")
+            f.write("%s\n" % ["%d" % x for x in overlaps_list])
             f.close()
+                    
 
         # Plot the stability (Fisher overlap)
         fov_fname = '%s/fov.pdf' % results_dir
         plt.figure()
-        plt.boxplot(fov_list, 0, 'gD')
+        box = plt.boxplot(fov_list, 0, '+', patch_artist=True)
+        color_boxplot(box)
         plt.title('Fisher overlap')
         plt.ylabel('-log10(p-value)')
         plt.savefig(fov_fname, bbox_inches='tight')
@@ -520,16 +611,31 @@ class OuterCrossVal(object):
         # Plot the stability (consistency index)
         cix_fname = '%s/cix.pdf' % results_dir
         plt.figure()
-        plt.boxplot(cix_list, 0, 'gD')
+        box = plt.boxplot(cix_list, 0, '+', patch_artist=True)
+        color_boxplot(box)
         plt.title('Consistency Index')
         plt.savefig(cix_fname, bbox_inches='tight')
 
         # Plot the stability (Pearson)
         prs_fname = '%s/prs.pdf' % results_dir
         plt.figure()
-        plt.boxplot(prs_list, 0, 'gD')
-        plt.title("Pearson's consistency'")
+        box = plt.boxplot(prs_list, 0, '+', patch_artist=True)
+        color_boxplot(box)
+        plt.title("Pearson's consistency")
         plt.savefig(prs_fname, bbox_inches='tight')
+
+        # Plot the histogram of overlaps
+        ovl_fname = "%s/ovl.pdf" % results_dir
+        fig, ax = plt.subplots()
+        x_indices = range(len(overlaps_list))
+        num_selected_features = np.sum(overlaps_list)
+        w = 1.0
+        ax.bar(x_indices, [float(x)/num_selected_features for x in overlaps_list],
+                width=w, color=blue_color, edgecolor="none") 
+        ax.set_xticks([x + w/2 for x in x_indices])
+        ax.set_xticklabels(['%s' % (x+1) for x in x_indices])
+        ax.set_title('Fraction of selected features selected exactly k times')
+        plt.savefig(ovl_fname, bbox_inches='tight')
 
         
 def main():
@@ -637,7 +743,7 @@ def main():
                             args.network_type, num_samples,
                             args.num_inner_folds, args.num_outer_folds, 
                             max_nr_feats=args.max_nr_feats,
-                            use_nodes=args.nodes)
+                            use_nodes=args.nodes, use_enet=args.enet)
         
         # ========= l1-regularized logistic regression =========\
         if not args.enet:

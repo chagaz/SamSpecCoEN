@@ -18,8 +18,6 @@ from datatypes.ExpressionDataset import HDF5GroupToExpressionDataset, MakeRandom
 
 import utils
 
-THRESHOLD = 0.75 # threshold for correlation values
-
 plot_regline = False # turn to True to visualize the cloud of points (gene 1 vs gene 2)
 
 orange_color = '#d66000'
@@ -513,59 +511,59 @@ def run_whole_data(expression_data, sample_labels, gene_names,
     # Read network skeleton
     co_expression_net.read_ntwk_skeleton(ppi_path, out_dir)
     
-    # # Create repertory in which to store co-expression networks (REGLINE)
-    # regline_path = "%s/regline" % out_dir
-    # try: 
-    #     os.makedirs(regline_path)
-    # except OSError:
-    #     if not os.path.isdir(regline_path):
-    #         raise
-    # # Compute and store edge weights (REGLINE)
-    # co_expression_net.create_sam_spec_regline(regline_path)
-
-    
-    # Create repertory in which to store co-expression networks (MAHALANOBIS)
-    mahalan_path = "%s/mahalan" % out_dir
+    # Create repertory in which to store co-expression networks (REGLINE)
+    regline_path = "%s/regline" % out_dir
     try: 
-        os.makedirs(mahalan_path)
+        os.makedirs(regline_path)
     except OSError:
-        if not os.path.isdir(mahalan_path):
+        if not os.path.isdir(regline_path):
             raise
-    # Compute and store edge weights (MAHALANOBIS)
-    co_expression_net.create_sam_spec_mahalan(mahalan_path)
-
-
-    # # Create repertory in which to store co-expression networks (SUM)
-    # sum_path = "%s/sum" % out_dir
-    # try: 
-    #     os.makedirs(sum_path)
-    # except OSError:
-    #     if not os.path.isdir(sum_path):
-    #         raise
-    # # Compute and store edge weights (SUM)
-    # co_expression_net.create_sam_spec_sum(sum_path)
+    # Compute and store edge weights (REGLINE)
+    co_expression_net.create_sam_spec_regline(regline_path)
 
     
-    # # Create repertory in which to store co-expression networks (EUCLIDE)
-    # euclide_path = "%s/euclide" % out_dir
+    # # Create repertory in which to store co-expression networks (MAHALANOBIS)
+    # mahalan_path = "%s/mahalan" % out_dir
     # try: 
-    #     os.makedirs(euclide_path)
+    #     os.makedirs(mahalan_path)
     # except OSError:
-    #     if not os.path.isdir(euclide_path):
+    #     if not os.path.isdir(mahalan_path):
     #         raise
-    # # Compute and store edge weights (EUCLIDE)
-    # co_expression_net.create_sam_spec_euclide(euclide_path)
+    # # Compute and store edge weights (MAHALANOBIS)
+    # co_expression_net.create_sam_spec_mahalan(mahalan_path)
+
+
+    # Create repertory in which to store co-expression networks (SUM)
+    sum_path = "%s/sum" % out_dir
+    try: 
+        os.makedirs(sum_path)
+    except OSError:
+        if not os.path.isdir(sum_path):
+            raise
+    # Compute and store edge weights (SUM)
+    co_expression_net.create_sam_spec_sum(sum_path)
 
     
-    # # Create repertory in which to store co-expression networks (EUCLTHR)
-    # euclthr_path = "%s/euclthr" % out_dir
-    # try: 
-    #     os.makedirs(euclthr_path)
-    # except OSError:
-    #     if not os.path.isdir(euclthr_path):
-    #         raise
-    # # Compute and store edge weights (EUCLTHR)
-    # co_expression_net.create_sam_spec_euclthr(euclthr_path)
+    # Create repertory in which to store co-expression networks (EUCLIDE)
+    euclide_path = "%s/euclide" % out_dir
+    try: 
+        os.makedirs(euclide_path)
+    except OSError:
+        if not os.path.isdir(euclide_path):
+            raise
+    # Compute and store edge weights (EUCLIDE)
+    co_expression_net.create_sam_spec_euclide(euclide_path)
+
+    
+    # Create repertory in which to store co-expression networks (EUCLTHR)
+    euclthr_path = "%s/euclthr" % out_dir
+    try: 
+        os.makedirs(euclthr_path)
+    except OSError:
+        if not os.path.isdir(euclthr_path):
+            raise
+    # Compute and store edge weights (EUCLTHR)
+    co_expression_net.create_sam_spec_euclthr(euclthr_path)
     
     
 def run_whole_data_aces(aces_data, ppi_path, refc_data, out_dir):

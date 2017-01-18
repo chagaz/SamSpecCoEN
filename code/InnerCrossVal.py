@@ -21,7 +21,7 @@ from sklearn import preprocessing
 
 import spams # for elastic-net 
 
-scale_data = False # whether to scale data before feeding it to l1-logreg
+scale_data = True # whether to scale data before feeding it to l1-logreg
 
 network_types = ['regline', 'mahalan', 'sum', 'euclide', 'euclthr'] # possible network weight types
 
@@ -997,7 +997,7 @@ class InnerCrossVal(object):
                     # Train
                     fit_weights = spams.fistaFlat(y_fortran, x_fortran, init_weights,
                                                    False, **spams_params)
-                    print "numfeat %.d" % len(np.nonzero(fit_weights)[0])
+                    # print "numfeat %.d" % len(np.nonzero(fit_weights)[0])
                     # Predict
                     ytr_te_pred = np.dot(self.x_tr[te, :], fit_weights)
                     y_pred.extend(ytr_te_pred[:, 0])
@@ -1005,7 +1005,7 @@ class InnerCrossVal(object):
                                                    
 
                 auc = skm.roc_auc_score(y_true, y_pred)
-                print "\tlambda1 %.2e" % lbd1, "\tlambda2  %.2e" % (lbd_ratio * lbd1)
+                print "\tlambda1 %.2e" % lbd1, "\tlambda2  %.2e" % (lbd_ratio * lbd1),
                 print "\tauc", auc
                 if not auc_dict.has_key(auc):
                     auc_dict[auc] = []
@@ -1017,21 +1017,30 @@ class InnerCrossVal(object):
         best_auc = auc_values[-1]
         best_reg_param = auc_dict[best_auc][0]
 
-        # Quality of fit?
-        spams_params = {'loss': 'logistic', 
-                        'regul': 'elastic-net', 
-                        'lambda1': best_reg_param[0],
-                        'lambda2': best_reg_param[1]*best_reg_param[0],
-                        'max_it':200}       
-        init_weights = np.zeros((self.x_tr.shape[1], 1), dtype=np.float64, order="FORTRAN")
-        y_fortran = np.asfortranarray(np.reshape(self.y_tr*2-1,
-                                                 (self.y_tr.shape[0], 1)), dtype=np.float64)
-        x_fortran = np.asfortranarray(self.x_tr, dtype=np.float64)
-        fit_weights = spams.fistaFlat(y_fortran, x_fortran, init_weights,
-                                      False, **spams_params)
+        # # Quality of fit?
+        # spams_params = {'loss': 'logistic', 
+        #                 'regul': 'elastic-net', 
+        #                 'lambda1': best_reg_param[0],
+        #                 'lambda2': best_reg_param[1]*best_reg_param[0],
+        #                 'max_it':200}       
+        # init_weights = np.zeros((self.x_tr.shape[1], 1), dtype=np.float64, order="FORTRAN")
+        # y_fortran = np.asfortranarray(np.reshape(self.y_tr*2-1,
+        #                                          (self.y_tr.shape[0], 1)), dtype=np.float64)
+        # x_fortran = np.asfortranarray(self.x_tr, dtype=np.float64)
+        # fit_weights = spams.fistaFlat(y_fortran, x_fortran, init_weights,
+        #                               False, **spams_params)
 
-        y_tr_pred = np.dot(self.x_tr, fit_weights)
-        print "\tTraining AUC:\t", skm.roc_auc_score(self.y_tr, y_tr_pred)
+        # y_tr_pred = np.dot(self.x_tr, fit_weights)
+        # print "\tTraining AUC:\t", skm.roc_auc_score(self.y_tr, y_tr_pred)
+
+        # # Number of non-zero parameters
+        # nnz = np.count_nonzero(fit_weights)
+        # print "\tNumber of selected features:\t", nnz
+        # if nnz > self.max_nr_feats:
+        #    sys.stderr.write("Not enough regularization!\n")
+        #    sys.stderr.write("Aborting\n")
+        #    print best_reg_param
+        #    sys.exit(-1)
 
         # Get optimal value of the regularization parameter.
         # If there are multiple equivalent values, return the first one.
@@ -1061,7 +1070,7 @@ class InnerCrossVal(object):
         spams_params = {'loss': 'logistic', 
                         'regul': 'elastic-net', 
                         'lambda1': best_reg_param[0],
-                        'lambda2': best_reg_param[1],
+                        'lambda2': best_reg_param[1]*best_reg_param[0],
                         'max_it':200}       
         
         # Train on the training set
@@ -1072,10 +1081,12 @@ class InnerCrossVal(object):
         fit_weights = spams.fistaFlat(y_fortran, x_fortran, init_weights,
                                       False, **spams_params)
 
+        # Quality of fit
+        y_tr_pred = np.dot(self.x_tr, fit_weights)
+        print "\tTraining AUC:\t", skm.roc_auc_score(self.y_tr, y_tr_pred)
+
         # Predict on the test set
         pred_values = np.dot(self.x_te, fit_weights)
-
-        # Quality of fit
         print "\tTest AUC:\t", skm.roc_auc_score(self.y_te, pred_values)
 
         # Get selected features
