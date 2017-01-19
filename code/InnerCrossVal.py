@@ -19,7 +19,8 @@ from sklearn import metrics as skm
 from sklearn import cross_validation as skcv 
 from sklearn import preprocessing
 
-import spams # for elastic-net 
+import spams  # for elastic-net 
+import glmnet # for elastic-net 
 
 scale_data = True # whether to scale data before feeding it to l1-logreg
 
@@ -875,16 +876,22 @@ class InnerCrossVal(object):
 
 
     # ================== l1/l2-regularized logistic regression ==================
-    def run_inner_enet_logreg(self, reg_params=[[10.**k for k in range(-3, 3)],
-                                                [0.25, 0.5, 0.75]]):
+    def run_inner_enet_logreg(self, reg_params=[10, np.arange(0, 1.1, 0.1)]):
+                              # reg_params=[[10.**k for k in range(-3, 3)],
+                              #                   [0.25, 0.5, 0.75]]):
         """ Run the inner loop, using an l1/l2-regularized logistic regression.
         
         Parameters
         ----------
+        # reg_params: list of list
+        #     Range of lambda1 and lambda_ratio values to try out.
+        #     Default: [[0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+        #               [0.25, 0.5, 0.75]]
         reg_params: list of list
-            Range of lambda1 and lambda_ratio values to try out.
-            Default: [[0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
-                      [0.25, 0.5, 0.75]]
+            Range of regularization parameters to try out
+            Default: [10, np.arange(0, 1.1, 0.1)]
+                10 means 10 values of lambdas will be tested
+                np.arange(0, 1.1, 0.1) is the range of alpha values (alpha l1 + (1-alpha) l2).
         
         Returns
         -------
@@ -909,8 +916,9 @@ class InnerCrossVal(object):
         return self.train_pred_inner_enet_logreg(best_reg_param)
         
 
-    def run_inner_enet_logreg_write(self, resdir, reg_params=[[10.**k for k in range(-3, 3)],
-                                                              [0.25, 0.5, 0.75]]):
+    def run_inner_enet_logreg_write(self, resdir, reg_params=[10, np.arange(0, 1.1, 0.1)]):
+                                                  # reg_params=[[10.**k for k in range(-3, 3)],
+                                                  #             [0.25, 0.5, 0.75]]):
         """ Run the inner loop, using an l1/l2-regularized logistic regression.
         Save outputs to files.
         
@@ -918,10 +926,17 @@ class InnerCrossVal(object):
         ----------
         resdir: path
             Path to dir where to save outputs
+
+        # reg_params: list of list
+        #     Range of lambda1 and lambda_ratio values to try out.
+        #     Default: [[0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+        #               [0.25, 0.5, 0.75]]
         reg_params: list of list
-            Range of lambda1 and lambda_ratio values to try out.
-            Default: [[0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
-                      [0.25, 0.5, 0.75]]
+            Range of regularization parameters to try out
+            Default: [10, np.arange(0, 1.1, 0.1)]
+                10 means 10 values of lambdas will be tested;
+                   if list, user-provided list of lambda values.
+                np.arange(0, 1.1, 0.1) is the range of alpha values (alpha l1 + (1-alpha) l2).
         
         Returns
         -------
@@ -956,10 +971,12 @@ class InnerCrossVal(object):
         np.savetxt(features_list_fname, features_list, fmt='%d')            
         
         
-    def cv_inner_enet_logreg(self, reg_params=[[10.**k for k in range(-3, 3)],
+    def cv_inner_enet_spams_logreg(self, reg_params=[[10.**k for k in range(-3, 3)],
                                                [0.25, 0.5, 0.75]]):
         """ Compute the inner cross-validation loop to determine the best regularization parameter
         for an l1/l2-regularized logistic regression.
+
+        Use the SPAMS toolbox.
         
         Parameters
         ----------
@@ -1017,31 +1034,6 @@ class InnerCrossVal(object):
         best_auc = auc_values[-1]
         best_reg_param = auc_dict[best_auc][0]
 
-        # # Quality of fit?
-        # spams_params = {'loss': 'logistic', 
-        #                 'regul': 'elastic-net', 
-        #                 'lambda1': best_reg_param[0],
-        #                 'lambda2': best_reg_param[1]*best_reg_param[0],
-        #                 'max_it':200}       
-        # init_weights = np.zeros((self.x_tr.shape[1], 1), dtype=np.float64, order="FORTRAN")
-        # y_fortran = np.asfortranarray(np.reshape(self.y_tr*2-1,
-        #                                          (self.y_tr.shape[0], 1)), dtype=np.float64)
-        # x_fortran = np.asfortranarray(self.x_tr, dtype=np.float64)
-        # fit_weights = spams.fistaFlat(y_fortran, x_fortran, init_weights,
-        #                               False, **spams_params)
-
-        # y_tr_pred = np.dot(self.x_tr, fit_weights)
-        # print "\tTraining AUC:\t", skm.roc_auc_score(self.y_tr, y_tr_pred)
-
-        # # Number of non-zero parameters
-        # nnz = np.count_nonzero(fit_weights)
-        # print "\tNumber of selected features:\t", nnz
-        # if nnz > self.max_nr_feats:
-        #    sys.stderr.write("Not enough regularization!\n")
-        #    sys.stderr.write("Aborting\n")
-        #    print best_reg_param
-        #    sys.exit(-1)
-
         # Get optimal value of the regularization parameter.
         # If there are multiple equivalent values, return the first one.
         print "\tall top params:\t", auc_dict[best_auc]
@@ -1049,9 +1041,11 @@ class InnerCrossVal(object):
         return best_reg_param
 
         
-    def train_pred_inner_enet_logreg(self, best_reg_param):
+    def train_pred_inner_enet_spams_logreg(self, best_reg_param):
         """ Train an l1-regularized logistic regression (with optimal parameter)
         on the train set, predict on the test set.
+        
+        Use the SPAMS toolbox.
         
         Parameters
         ----------
@@ -1099,10 +1093,122 @@ class InnerCrossVal(object):
         print "\tNumber of selected features:\t", len(features)
 
         return pred_values, features
+
+
+
+        
+    def cv_inner_enet_logreg(self, reg_params=[10, np.arange(0, 1.1, 0.1)]):
+        """ Compute the inner cross-validation loop to determine the best regularization parameter
+        for an l1/l2-regularized logistic regression.
+
+        Use python-glmnet
+        
+        Parameters
+        ----------
+        reg_params: list of list
+            Range of regularization parameters to try out
+            Default: [10, np.arange(0, 1.1, 0.1)]
+                10 means 10 values of lambdas will be tested;
+                   if list, user-provided list of lambda values.
+                np.arange(0, 1.1, 0.1) is the range of alpha values (alpha l1 + (1-alpha) l2).
+        
+        Returns
+        -------
+        best_reg_param: float
+            Optimal values of the regularization parameters.
+        """
+        cv_score_dict = {} # cv_score:[alpha, lambda]
+        for alpha in reg_params[1]:
+            # Initialize logistic regression cross-validation classifier
+            cv_clf = glmnet.LogitNet(alpha=alpha,
+                                     n_lambda=reg_params[0],
+                                     scoring='roc_auc', n_splits=self.nr_folds)
+
+            # Fit to training data
+            cv_clf.fit(self.x_tr, self.y_tr)
+
+            # Get optimal lambda value
+            best_lambda = cv_clf.lambda_max_
+
+            # Save cv_score            
+            cv_score = cv_clf.cv_mean_score_[cv_clf.lambda_max_inx_]
+            
+            print "\talpha %.2e" % alpha, "\tlambda opt  %.2e" % best_lambda,
+            print "\tcv_score", cv_score
+            if not cv_score_dict.has_key(cv_score):
+                cv_score_dict[cv_score] = []
+            cv_score_dict[cv_score].append([alpha, best_lambda])
+
+        # Get best parameters
+        cv_score_values = cv_score_dict.keys()
+        cv_score_values.sort()
+        best_cv_score = cv_score_values[-1]
+        best_reg_param = cv_score_dict[best_cv_score][0]
+            
+        print "\tbest alpha:\t", best_reg_param[0]
+        print "\tbest lambda:\t", best_reg_param[1]
+        return best_reg_param
+
+        
+    def train_pred_inner_enet_logreg(self, best_reg_param):
+        """ Train an l1-regularized logistic regression (with optimal parameter)
+        on the train set, predict on the test set.
+        
+        Use python-glmnet
+        
+        Parameters
+        ----------
+        best_reg_param: [best_alpha, best_lambda]
+            best_alpha: float
+            Optimal value of the alpha ratio.
+        
+            best_lamb: float
+            Optimal value of the lambda regularization parameter (total amount of regularization).
+
+        Returns
+        -------
+        pred_values: (num_test_samples, ) array
+            Probability estimates for test samples, in the same order as trueLabels.
+        features: list
+            List of indices of the selected features.
+        """
+        [best_alpha, best_lamb] = best_reg_param
+        # Initialize ElasticNet classifier
+        classif = glmnet.LogitNet(alpha=best_alpha, lambda_path=[best_lamb], n_splits=0)
+        
+        # Train on the training set
+        classif.fit(self.x_tr, self.y_tr)
+
+        # Predict on the train set
+        y_tr_pred = classif.predict_proba(self.x_tr, lamb=best_lamb)
+
+        # Only get the probability estimates for the positive class
+        y_tr_pred = y_tr_pred[:, classif.classes_.tolist().index(1)]
+
+        # Quality of fit (train set)
+        print "\tTraining AUC:\t", skm.roc_auc_score(self.y_tr, y_tr_pred)
+
+
+        # Quality of fit (test set)
+        # Predict on the test set
+        y_te_pred = classif.predict_proba(self.x_te, lamb=best_lamb)
+
+        # Only get the probability estimates for the positive class
+        y_te_pred = y_te_pred[:, classif.classes_.tolist().index(1)]
+        print "\tTest AUC:\t", skm.roc_auc_score(self.y_te, y_te_pred)
+
+        # Get selected features
+        # If there are less than self.max_nr_feats, these are the non-zero coefficients
+        features = np.where(classif.coef_path_[0, :, 0])[0]
+        if len(features) > self.max_nr_feats:
+            # Prune the coefficients with lowest values
+            features = np.argsort(classif.coef_path_[0, :, 0])[-self.max_nr_feats:]
+ 
+        print "\tNumber of selected features:\t", len(features)
+
+        return y_te_pred, features
     # ================== End l1/l2-regularized logistic regression ==================
         
-
-
 
 def main():
     """ Run an inner cross-validation on sample-specific co-expression networks.
@@ -1203,9 +1309,16 @@ def main():
         # ========= l1 regularization =========
         if not args.enet:
             # Run the inner cross-validation for the l1 regularization
-            print "L1 regularization"
-            icv.run_inner_l1_logreg_write(args.results_dir,
-                                          reg_params=[2.**k for k in range(-7, 0)])
+            # print "l1 regularization (sklearn)"
+            # icv.run_inner_l1_logreg_write(args.results_dir,
+            #                               reg_params=[2.**k for k in range(-7, 0)])
+
+            print "l1 regularization (python-glmnet)"
+            number_of_lambda_values = 50
+            alphas = [1.0]
+            icv.run_inner_enet_logreg_write(args.results_dir,
+                                            reg_params=[number_of_lambda_values,
+                                                        alphas])
         # ========= End l1 regularization =========
 
 
@@ -1214,10 +1327,15 @@ def main():
             print "l1/l2 regularization"
             
             # Run the inner cross-validation for the l1/l2 regularization
-            l1_values = [2.**k for k in range(-8, -2)]
-            lbd_ratio_values = [0.5, 1.0, 1.5]
+            # l1_values = [2.**k for k in range(-8, -2)]
+            # lbd_ratio_values = [0.5, 1.0, 1.5]
+            # icv.run_inner_enet_logreg_write(args.results_dir,
+            #                                 reg_params=[l1_values, lbd_ratio_values])
+            number_of_lambda_values = 50
+            alphas = np.arange(0.1, 1, 0.1)
             icv.run_inner_enet_logreg_write(args.results_dir,
-                                            reg_params=[l1_values, lbd_ratio_values])
+                                            reg_params=[number_of_lambda_values,
+                                                        alphas])
         # ========= End l1/l2 regularization =========
 
 

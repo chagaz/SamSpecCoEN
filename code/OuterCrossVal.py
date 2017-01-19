@@ -17,7 +17,7 @@ import os
 import scipy.stats as st
 import sys
 
-from sklearn import metrics as skm
+from sklearn import metrics 
 
 import InnerCrossVal
 
@@ -390,7 +390,7 @@ class OuterCrossVal(object):
         auc: float
            Area under the ROC curve for the experiment.
         """
-        return skm.roc_auc_score(self.true_labels, self.pred_values)
+        return metrics.roc_auc_score(self.true_labels, self.pred_values)
         
 
     def compute_fisher_overlap(self):
