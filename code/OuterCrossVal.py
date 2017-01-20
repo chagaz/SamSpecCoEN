@@ -9,15 +9,18 @@ import matplotlib # in a non-interactive environment
 matplotlib.use('Agg') # in a non-interactive environment
 import matplotlib.pyplot as plt
 
-import warnings
-warnings.filterwarnings("error", category=RuntimeWarning)
+# import warnings
+# warnings.filterwarnings("error", category=RuntimeWarning)
 
+import gzip
 import numpy as np
 import os
 import scipy.stats as st
 import sys
 
-from sklearn import metrics 
+from sklearn import metrics, linear_model, model_selection
+
+import glmnet
 
 import InnerCrossVal
 
@@ -642,6 +645,176 @@ class OuterCrossVal(object):
         ax.set_xticklabels(['%s' % (x+1) for x in x_indices])
         ax.set_title('Fraction of selected features selected exactly k times')
         plt.savefig(ovl_fname, bbox_inches='tight')
+
+
+    def get_selected_genes(self, min_number_folds, aces_data):
+        """ Get the genes that have been selected in a given number of folds.
+        
+        Parameters
+        ----------
+        min_number_folds: int
+            Number of folds in which a feature must appear to be selected.
+
+        aces_data: datatypes.ExpressionDataset.ExpressionDataset
+            Data in ACES format, read using HDF5GroupToExpression_dataset.
+
+        Output
+        ------
+        selected_features_list: list
+            indices of selected features.
+        
+        selected_genes_dict: dict
+            keys: selected genes
+            values: number of selected edges that gene belongs to;
+                    0 if nodes-based selection.
+        """
+        ### Create list of indices of features that are selected.
+        selected_features_dict = {} # feat_idx:number_of_times_selected
+        for feature_set in self.features_list:
+            for feat_idx in feature_set:
+                if not selected_features_dict.has_key(feat_idx):
+                    selected_features_dict[feat_idx] = 1
+                else:
+                    selected_features_dict[feat_idx] += 1
+
+        selected_features_list = []
+
+        for feat_idx, number_of_times_selected in selected_features_dict.iteritems():
+            try:
+                assert number_of_times_selected <= len(self.features_list)
+            except AssertionError:
+                print feat_idx, number_of_times_selected
+                sys.stderr.write("Error in computing the number of times a feature was selected.\n")
+                sys.stderr.write("Aborting.\n")
+                sys.exit(-1)
+            if number_of_times_selected >= min_number_folds:
+                selected_features_list.append(feat_idx)
+        selected_features_list.sort()
+
+        print "%d features in the final selection." % len(selected_features_list)
+        
+        ### Map features to gene names
+        if self.use_nodes:
+            ## Features are genes
+            aces_gene_names = aces_data.geneLabels
+            selected_genes_dict = {aces_gene_names[ix]:0 for ix in selected_features_list}
+        else:
+            ## Features are edges
+            selected_genes_dict = {}
+            edges_f = '%s/edges_entrez.gz' % self.network_root
+            edges_entrez_list = []
+            with gzip.open(edges_f) as f:
+                edges_entrez_list = [[line.split()[0], line.split()[1]] for line in f.readlines()]
+                f.close()
+            edges_entrez_list = [edges_entrez_list[i] for i in selected_features_list]
+            for edge in edges_entrez_list:
+                for g in edge:
+                    if not selected_genes_dict.has_key(g):
+                        selected_genes_dict[g] = 1
+                    else:
+                        selected_genes_dict[g] += 1
+            print "\t This corresponds to %d distinct genes" % len(selected_genes_dict.keys())
+        return selected_features_list, selected_genes_dict
+
+
+    def final_cv_score(self, selected_features_list, aces_data):
+        """ Get the cross-validated predictivity of the selected features
+        
+        Parameters
+        ----------
+        selected_features_list: list
+            indices of selected features.
+
+        aces_data: datatypes.ExpressionDataset.ExpressionDataset
+            Data in ACES format, read using HDF5GroupToExpression_dataset.
+
+        Output
+        ------
+        cv_scores: float
+            cross-validated AUCs of a logistic regression using only
+            the selected features.
+        
+        # cv_score_ridge: float
+        #     cross-validated AUC of a rige-regularized logistic regression
+        #     using only the selected features.            
+        """
+        # Get data
+        y_data = aces_data.patientClassLabels
+        if self.use_nodes:
+            print "Using node weights as features"
+            x_data = aces_data.expressionData[:, selected_features_list]
+        else:
+            print "Using edge weights as features"
+            x_f = '%s/%s/edge_weights.gz' % (self.network_root, self.network_type)
+            x_data = np.loadtxt(x_f).transpose()[:, selected_features_list]
+        
+        # Initialize logistic regression cross-validation classifier
+        cv_clf = linear_model.LogisticRegression(C=1e6, class_weight='balanced')
+        
+        # 10-fold cross-validation
+        cv_folds = model_selection.KFold(n_splits=10).split(y_data)
+        pred = np.zeros(y_data.shape)
+        for tr, te in cv_folds:
+            Xtr = x_data[tr, :]
+            ytr = y_data[tr]
+            Xte = x_data[te, :]
+
+            # Fit classifier
+            cv_clf.fit(Xtr, ytr)
+
+            # Predict probabilities (of belonging to +1 class) on test data
+            yte_pred = cv_clf.predict_proba(Xte)
+            pred[te] = yte_pred[:, np.nonzero(cv_clf.classes_ == 1)[0][0]]
+            
+        return metrics.roc_auc_score(y_data, pred)
+
+        
+        
+    def final_analysis(self, results_dir, min_number_folds):
+        """ Create results files.
+
+        Parameter
+        ---------
+        results_dir: path
+            Where to save results.
+
+        Created files
+        -------------
+        <results_dir>/final_selection_genes.txt
+            list of names of selected genes + number of edges they belong to
+        <results_dir>/final_selection_results.txt
+            - cross-validated predictivity (ridge regression) of selected features
+        <results_dir>/final_selection_enrichment.txt
+            - BINGO enrichment results.
+        """
+        # Read ACES data
+        sys.path.append(self.aces_data_root)
+        from datatypes.ExpressionDataset import HDF5GroupToExpressionDataset
+        f = h5py.File("%s/experiments/data/U133A_combat.h5" % self.aces_data_root)
+        aces_data = HDF5GroupToExpressionDataset(f['U133A_combat_RFS'],
+                                                 checkNormalise=False)
+        f.close()
+        
+        # Get final selection
+        selected_features_list, selected_genes_dict = self.get_selected_genes(min_number_folds, aces_data) 
+        sel_fname = '%s/final_selection_genes.txt' % results_dir
+        with open(sel_fname, 'w') as f:
+            for g, v in selected_genes_dict.iteritems():
+                f.write("%s %d\n" % (g, v))
+            f.close()
+
+        # Cross-validated predictivity of selected features
+        cv_scores = self.final_cv_score(selected_features_list, aces_data)
+        res_fname = '%s/final_selection_results.txt' % results_dir
+        with open(res_fname, 'w') as f:
+            # Write
+            f.write("Number of features used:\t%d\n" % len(selected_features_list))
+            
+            # Write AUC
+            f.write("Logistic regression AUC:\t%.2f\n" % cv_scores)
+                                                                     
+            # f.write("Ridge logistic regression AUC:\t%.2f\n" % cv_score_ridge)
+            f.close()
 
         
 def main():
