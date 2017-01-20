@@ -138,6 +138,12 @@ class CoExpressionNetwork(object):
             Each line is an undirected edge, formatted as:
                 <index of gene 1> <index of gene 2>
             By convention, the index of gene 1 is smaller than that of gene 2.
+
+        out_path/edges_entrez.gz: 
+            Gzipped file containing the list of edges of the PPI network.
+            Each line is an undirected edge, formatted as:
+                <EntrezID of gene 1> <EntrezID of gene 2>
+            in the same order as edges.gz.
         """
         
         # Load set of edges
@@ -163,7 +169,15 @@ class CoExpressionNetwork(object):
                     e = (gene_idx_2, gene_idx_1)
                 edges_set.add(e)
         f.close()  
-        edges_list = np.array(list(edges_set))
+        edges_list = list(edges_set)
+
+        # Save edges to file (EntrezID)
+        edges_entrez_list = [[self.gene_names[gene_idx_1], self.gene_names[gene_idx_2]] \
+                             for [gene_idx_1, gene_idx_2] in edges_list]
+        edges_f = '%s/edges_entrez.gz' % out_path
+        np.savetxt(edges_f, edges_entrez_list, fmt='%s')
+        sys.stdout.write("Network skeleton edges (EntrezID) saved to %s\n" % edges_f)
+
         self.num_edges = len(edges_list)
 
         # Restrict CoExpressionNetwork data to the genes that are in the network
@@ -506,10 +520,11 @@ def run_whole_data(expression_data, sample_labels, gene_names,
                                             reference_data, gene_names)
 
     # Normalize the data
-    co_expression_net.normalize_expression_data()
+    # co_expression_net.normalize_expression_data()
 
     # Read network skeleton
     co_expression_net.read_ntwk_skeleton(ppi_path, out_dir)
+    sys.exit(0)
     
     # Create repertory in which to store co-expression networks (REGLINE)
     regline_path = "%s/regline" % out_dir
