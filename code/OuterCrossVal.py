@@ -581,16 +581,22 @@ class OuterCrossVal(object):
             fov_list = self.compute_fisher_overlap()
             f.write("Stability (Fisher overlap):\t")
             f.write("%s\n" % ["%.2e" % x for x in fov_list])
+            f.write("Average stability (Fisher overlap):\t")
+            f.write("%.2e\n" % np.mean(fov_list))
 
             # Write the stability (consistency index)
             cix_list = self.compute_consistency()
             f.write("Stability (Consistency Index):\t")
             f.write("%s\n" % ["%.2e" % x for x in cix_list])
+            f.write("Average stability (Consistency Index):\t")
+            f.write("%.2e\n" % np.mean(cix_list))
 
             # Write the stability (Pearson)
             prs_list = self.compute_pearson()
             f.write("Stability (Pearson):\t")
             f.write("%s\n" % ["%.2e" % x for x in prs_list])
+            f.write("Average stability (Pearson):\t")
+            f.write("%.2e\n" % np.mean(prs_list))
 
             # Write the histogram of overlaps
             overlaps_list = self.compute_overlap_histogram()
