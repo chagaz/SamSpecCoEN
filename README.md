@@ -132,6 +132,36 @@ under `../outputs/U133A_combat_RFS/subtype_stratified/repeat<repeat_index>`:
             cix.pdf, fov.pdf, results.txt: results of outer cross-validation (sfan on node weights).
 ```
 
+Analysis of results
+-------------------
+### Get final set of selected features
+To generate the set of features selected in k of the 10 cross-validation folds, as well as their predictivity.
+
+` python analyze_final.py ../ACES ../outputs/U133A_combat_RFS \
+         ../outputs/U133A_combat_RFS/subtype_stratified/repeat0  \
+         regline -o 10 -k 5 -m 1000`
+creates, under `../outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/regline/`, the following files:
+* `final_selection_genes.txt`: List of EntrezIDs of selected genes + number of edges they belong to
+* `final_selection_results.txt`: Cross-validated predictivity (ridge regression) of selected features.
+
+### Map Entrez IDs to gene symbols
+`python map_Entrez_to_gene_symbol.py \
+	../outputs/U133A_combat_RFS/KEGG_edges1210/subtype_stratified/repeat0/results/nodes/final_selection_genes.txt \
+  ../outputs/U133A_combat_RFS/KEGG_edges1210/subtype_stratified/repeat0/results/nodes/final_selection_genes_symbols.txt` 
+converts a list of Entrez IDs in gene symbols.
+
+### Compare selected genes to reference gene sets
+`python compare_genesets.py \
+    ../outputs/U133A_combat_RFS/KEGG_edges1210/subtype_stratified/repeat0/results/regline/ \
+    ../FERAL_supp_data/Allahyar.285.sup.1 \
+    -l ../outputs/U133A_combat_RFS/KEGG_edges1210/genes_in_network_GeneSymbols.txt`
+compares (hypergeometric test) the list of selected genes to all the reference gene sets under `../FERAL_supp_data/Allahyar.285.sup.1`.
+
+### GO enrichment analysis
+Can be done using the web server at http://pantherdb.org/
+To easily copy-paste the list of selected genes: xsel -b < final_selection_genes_symbols.txt
+
+
 Task list
 =========
 - [x] Validate the different weights of computing edge weights (i.e. ensure they do what they're supposed to) in CoExpressionNetwork.py
