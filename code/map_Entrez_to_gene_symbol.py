@@ -18,11 +18,16 @@ def main():
 btype_stratified/repeat0/results/nodes/final_selection_genes.txt ../outputs/U133A_combat_RFS/KEGG_edges1210/su
 btype_stratified/repeat0/results/nodes/final_selection_genes_symbols.txt
     
+        $ python map_Entrez_to_gene_symbol.py ../ACES/experiments/data/KEGG_edges1210.sif \
+    ../outputs/KEGG_edges1210_GeneSymbol.sif -n
+    
     """
     parser = argparse.ArgumentParser(description="Convert EntrezID to Gene Symbol",
                                      add_help=True)
     parser.add_argument("entrez_path", help="File containing the Entrez IDs")
     parser.add_argument("symbol_path", help="File containing the Gene Symbols (to write)")
+    parser.add_argument("-n", "--network", action='store_true', default=False,
+                        help="Convert IDs of a network (sif file).")
     args = parser.parse_args()
 
     # Create mapping dictionary
@@ -57,23 +62,37 @@ btype_stratified/repeat0/results/nodes/final_selection_genes_symbols.txt
                 break
         f.close()    
 
-        
     # Convert file
     error_cnt = 0
-    with open(args.entrez_path) as f:
-        with open(args.symbol_path, 'w') as g:
-            for line in f:
-                entrez_id = line.split()[0].split("_")[1]
-                try:
-                    symbol_id = mapping_dict[entrez_id]
-                    g.write("%s\n" % symbol_id)
-                except KeyError:
-                    error_cnt += 1
-                    sys.stderr.write("Could not find Gene Symbol for Entrez ID %s.\n" % entrez_id)
-            g.close()
-        f.close()
+    if args.network:    
+        with open(args.entrez_path) as f:
+            with open(args.symbol_path, 'w') as g:
+                for line in f:
+                    entrez_id_0 = line.split()[0]
+                    entrez_id_1 = line.split()[2]
+                    try:
+                        symbol_id_0 = mapping_dict[entrez_id_0]
+                        symbol_id_1 = mapping_dict[entrez_id_1]
+                        g.write("%s %s %s\n" % (symbol_id_0, line.split()[1], symbol_id_1))
+                    except KeyError:
+                        error_cnt += 1
+                g.close()
+            f.close()
+    else:
+        with open(args.entrez_path) as f:
+            with open(args.symbol_path, 'w') as g:
+                for line in f:
+                    entrez_id = line.split()[0].split("_")[1]
+                    try:
+                        symbol_id = mapping_dict[entrez_id]
+                        g.write("%s\n" % symbol_id)
+                    except KeyError:
+                        error_cnt += 1
+                        sys.stderr.write("Could not find Gene Symbol for Entrez ID %s.\n" % entrez_id)
+                g.close()
+            f.close()
 
-    print error_cnt, "genes could not be mapped."
+    print error_cnt, "lines could not be mapped."
             
 if __name__ == "__main__":
     main()
