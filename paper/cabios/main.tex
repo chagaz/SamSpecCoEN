@@ -44,6 +44,16 @@ online.}
 
 \todo{A major challenge in systems biology is to reveal the cellular pathways that give rise to specific phenotypes and behaviours. Current techniques often rely on a network representation of molecular interactions, where each node represents a protein or a gene and each interaction is assigned a single static score.}
 
+\todo{Illustrative example: breast cancer. 
+Breast cancer is frequent and still causes many deaths, mostly because of metastases. 
+For the last 15 years we've been trying to build molecular signatures pertaining to clinical outcome [ref: cf FERAL].
+But they ain't stable [ref: the usual + FERAL].
+
+Cancer = deregulation of cellular pathways through multiple somatic mutations [ref: cf FERAL]. So networks make sense. 
+A number of approaches have been trying to use networks to get more stable signatures [ref: cf FERAL + FERAL].
+
+They still don't really work, although FERAL gives substantial improvement in stability. }
+
 Co-expression networks are a powerful and much used tool to analyze and visualize gene-expression data at a population level. 
 They can be used to contrast two populations, for example healthy vs. diseased. 
 They represent the correlation between genes.
@@ -89,32 +99,37 @@ Let us further assume a reference data set of $N$ samples and the same $p$ genes
 
 \subsection{Sample-specific edge weights}
 
-\subsubsection{LIONESS}
-LIONESS~\citep{kuijjer2015} is, to the best of our knowledge, the only existing method to build sample-specific co-expression networks from gene expression data.\\
+LIONESS~\citep{kuijjer2015} is, to the best of our knowledge, the only existing method to build sample-specific co-expression networks from gene expression data.
+LIONESS considers that the global network is made of the aggregation of individual contributions from each sample,
+and computes the sample-specific weight of a given gene pair as the contribution of this sample to the corresponding population-wide correlation. 
 
-LIONESS considers that the global network is made of the aggregation of individual contributions from each sample. 
-Denoting by $e_{ij}^\alpha$ the weight of the edge between $i$ and $j$ computed over all samples;
-by $e_{ij}^{(\alpha - q)}$ the weight of the edge between $i$ and $j$ computed over all samples but sample $q$;
-and by $e_{ij}^q$ the weight of the edge between $i$ and $j$ contributed by sample $q$:
-    \[
-    e_{ij}^\alpha = \sum_{s=1}^n \frac{1}{n} e_{ij}^s 
-    \mbox{ and }
-    e_{ij}^{(\alpha - q)} = \sum_{s=1}^n \frac{1}{(n-1)} e_{ij}^s
-    \]
 
-Hence
-    \[
-    e_{ij}^q = \frac{1}{n} \left(  e_{ij}^{\alpha} - e_{ij}^{(\alpha - q)} \right) + e_{ij}^{(\alpha - q)}.
-    \]
+% \subsubsection{LIONESS}
+% LIONESS~\citep{kuijjer2015} is, to the best of our knowledge, the only existing method to build sample-specific co-expression networks from gene expression data.\\
 
-In the case of a network computed using Pearson's correlation, assuming the number $n$ of samples to be large,~\cite{kuijjer2015} show that the individual contributions of each sample can be approximated by
-    \[
-    % e_{ij}^q \approx \frac{n}{n-1} \left( \frac{\xmat_i^q - \bar {\xmat_i}}{S_{\xmat_i}} \right) 
-    % \left( \frac{\xmat_j^q - \bar {\xmat_j}}{S_{\xmat_j}} \right)
-    e_{ij}^q \approx \frac{n}{n-1} \left( \frac{x_i^q - \bar {x_i}}{s_{\xx_i}} \right) 
-    \left( \frac{x_j^q - \bar {x_j}}{s_{\xx_j}} \right)
-    \]
-    where $s_{\xx_i} = \sqrt{\frac{1}{n-1} \sum_{s=1}^n \left( x_i^s - \bar{x_i} \right)^2}$ is the sample standard deviation of gene $i$ and $\bar{x_i}$ is its mean.
+% LIONESS considers that the global network is made of the aggregation of individual contributions from each sample. 
+% Denoting by $e_{ij}^\alpha$ the weight of the edge between $i$ and $j$ computed over all samples;
+% by $e_{ij}^{(\alpha - q)}$ the weight of the edge between $i$ and $j$ computed over all samples but sample $q$;
+% and by $e_{ij}^q$ the weight of the edge between $i$ and $j$ contributed by sample $q$:
+%     \[
+%     e_{ij}^\alpha = \sum_{s=1}^n \frac{1}{n} e_{ij}^s 
+%     \mbox{ and }
+%     e_{ij}^{(\alpha - q)} = \sum_{s=1}^n \frac{1}{(n-1)} e_{ij}^s
+%     \]
+
+% Hence
+%     \[
+%     e_{ij}^q = \frac{1}{n} \left(  e_{ij}^{\alpha} - e_{ij}^{(\alpha - q)} \right) + e_{ij}^{(\alpha - q)}.
+%     \]
+
+% In the case of a network computed using Pearson's correlation, assuming the number $n$ of samples to be large,~\cite{kuijjer2015} show that the individual contributions of each sample can be approximated by
+%     \[
+%     % e_{ij}^q \approx \frac{n}{n-1} \left( \frac{\xmat_i^q - \bar {\xmat_i}}{S_{\xmat_i}} \right) 
+%     % \left( \frac{\xmat_j^q - \bar {\xmat_j}}{S_{\xmat_j}} \right)
+%     e_{ij}^q \approx \frac{n}{n-1} \left( \frac{x_i^q - \bar {x_i}}{s_{\xx_i}} \right) 
+%     \left( \frac{x_j^q - \bar {x_j}}{s_{\xx_j}} \right)
+%     \]
+%     where $s_{\xx_i} = \sqrt{\frac{1}{n-1} \sum_{s=1}^n \left( x_i^s - \bar{x_i} \right)^2}$ is the sample standard deviation of gene $i$ and $\bar{x_i}$ is its mean.
 
 Because LIONESS considers the contribution of a sample to the correlation of a population of samples, the weights it assigns depend on this population. This hinders its interpretability, and makes prediction difficult, as the representation of one sample depends on which other samples are being considered. For this reason we do not use LIONESS in what follows.
 
@@ -147,7 +162,7 @@ e_{ij}^q = \begin{cases} ||X_i^q - X_j^q||^2 &\mbox{if } X_i^q > 0 \mbox{ and } 
 \subsubsection{Data}
 We evaluated our proposed scheme on ACES~\ref{staiger2015}, a cohort of $1\,606$ breast cancer samples collected from $12$ studies in NCBI Gene Expression Omnibus.
 Each sample is labeled positive or negative according to recurrence-free survival after five years. 
-For evaluation, we use three different networks: two also employed by~\ref{staiger2015} (KEGG, \teal{xxx genes and xxx interactions}, and I2D, \teal{xxx genes and xxx interactions}), and a random network.
+For evaluation, we use three different networks: two also employed by~\ref{staiger2015} (KEGG, \todo{xxx genes and xxx interactions}, and I2D, \todo{xxx genes and xxx interactions}), and a random network.
 
 % \subsubsection{Validation framework}
 % \begin{figure}[!tpb]
