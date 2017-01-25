@@ -29,7 +29,7 @@ def main():
     -------
         $ python analyze_final.py ../ACES ../outputs/U133A_combat_RFS \
          ../outputs/U133A_combat_RFS/subtype_stratified/repeat0  \
-         regline -o 10 -k 5 -m 1000
+         regline -o 10 -k 5 -m 1000 -t 10
     
     Files created
     -------------
@@ -37,8 +37,6 @@ def main():
         list of names of selected genes + number of edges they belong to
     <results_dir>/final_selection_results.txt
         - cross-validated predictivity (ridge regression) of selected features
-    <results_dir>/final_selection_enrichment.txt
-        - BINGO enrichment results.
     """
     parser = argparse.ArgumentParser(description="Analyze the selected features",
                                      add_help=True)
