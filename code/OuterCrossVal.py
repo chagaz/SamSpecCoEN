@@ -784,8 +784,6 @@ class OuterCrossVal(object):
             list of names of selected genes + number of edges they belong to
         <results_dir>/final_selection_results.txt
             - cross-validated predictivity (ridge regression) of selected features
-        <results_dir>/final_selection_enrichment.txt
-            - BINGO enrichment results.
         """
         # Read ACES data
         sys.path.append(self.aces_data_root)

@@ -107,6 +107,12 @@ class InnerCrossVal(object):
         tr_indices = np.loadtxt('%s/train.indices' % trte_root, dtype='int')
         te_indices = np.loadtxt('%s/test.indices' % trte_root, dtype='int')
 
+        # Files neede for the usage of sfan
+        if use_sfan:
+            print "Using sfan"
+            edges_f = '%s/edges.gz' % ntwk_root
+            nodes_f = '%s/genes_in_network.txt' % ntwk_root
+
         if use_nodes or use_sfan:
             print "Using node weights as features"
             # Read ACES data
@@ -120,6 +126,14 @@ class InnerCrossVal(object):
             # Get Xtr, Xte
             self.x_tr = aces_data.expressionData[tr_indices, :]
             self.x_te = aces_data.expressionData[te_indices, :]
+
+            if use_sfan:
+                # Restrict to only connected nodes
+                print "Using connected nodes only"
+                genes_in_network = np.loadtxt(nodes_f, dtype=int)
+                self.x_tr = self.x_tr[:, genes_in_network]
+                self.x_te = self.x_te[:, genes_in_network]
+            
         else:
             print "Using edge weights as features"
             x_f = '%s/%s/edge_weights.gz' % (ntwk_root, network_type)
@@ -142,21 +156,22 @@ class InnerCrossVal(object):
         self.nr_folds = nr_folds
         self.max_nr_feats = max_nr_feats
 
-        # Compute extra files for the usage of sfan:
+        # Compute extra files for the usage of sfan, if needed:
         if use_sfan:
-            print "Using sfan"
-            edges_f = '%s/edges.gz' % ntwk_root
-
             # Number of edges
             self.num_edges = np.loadtxt(edges_f).shape[0]
 
             # Dimacs network and connected nodes
             self.ntwk_dimacs_f = '%s/network.dimacs' % ntwk_root
-            self.compute_dimacs(edges_f)
+            if not os.path.isfile(self.ntwk_dimacs_f):
+                print "Compute dimacs file"
+                self.compute_dimacs(edges_f, nodes_f)
 
             # Node weights
             self.node_weights_f = '%s/scores.txt' % ntwk_root
-            self.compute_node_weights()
+            if not os.path.isfile(self.node_weights_f):
+                print "Compute scores file"
+                self.compute_node_weights()
 
             # Path to sfan
             self.sfan_path = sfan_path
@@ -164,7 +179,7 @@ class InnerCrossVal(object):
             import evaluation_framework as ef
 
 
-    def compute_dimacs(self, edges_f):
+    def compute_dimacs_restrict_to_connected(self, edges_f):
         """ Compute dimacs version of the network file edges.gz.
 
         Nodes that are not connected to any other are eliminated.
@@ -262,6 +277,99 @@ class InnerCrossVal(object):
 
         # Delete temporary file
         os.remove(tmp_fname)        
+
+
+    def compute_dimacs(self, edges_f, nodes_f):
+        """ Compute dimacs version of the network file edges.gz.
+
+        Nodes that are not connected to any other are eliminated.
+
+        Input file
+        ----------
+        edges_f: gzipped file
+            Gzipped file containing the list of edges of the co-expression networks.
+            Each line is an undirected edge, formatted as:
+                <index of gene 1> <index of gene 2>
+            By convention, the index of gene 1 is smaller than that of gene 2.
+        nodes_f: file
+            Indices (in the gene expressiond data) of genes that are used in the network.
+
+        Modified file
+        -------------
+        self.ntwk_dimacs_f: path
+            Dimacs version of edges.gz
+
+        Modified attributes
+        -------------------
+        # self.connected_nodes_map: dict
+        #     Map node IDs in dimacs file to node indices in self.x_tr.
+        self.x_tr, self.x_te:
+            Restricted to the nodes that appear in the network.
+        """
+        # Read list of indices of genes in network
+        genes_in_network = np.loadtxt(nodes_f, dtype=int)
+
+        # Restrict data to nodes that belong to the network:
+        self.x_tr = self.x_tr[:, genes_in_network]
+        self.x_te = self.x_te[:, genes_in_network]
+
+        self.num_features = len(genes_in_network)
+        print "%d nodes in the network." % self.num_features
+
+        # Read list of edges
+        edges_set = set([])
+        with gzip.open(edges_f, 'r') as f:     
+            for line in f:
+                idx_1, idx_2 = [int(x) for x in line.split()]
+                edges_set.add((idx_1, idx_2))
+                edges_set.add((idx_2, idx_1))
+            f.close()
+
+        edges_list = list(edges_set)
+        edges_list.sort()
+                
+        with open(self.ntwk_dimacs_f, 'w') as g:
+            g.write("p max %d %d\n" % (self.num_features, self.num_edges*2))
+            for e in edges_list:
+                g.write("a %d %d 1\n" % ((e[0]+1), (e[1]+1)))
+            g.close()           
+
+
+    # def compute_dimacs(self, edges_f):
+    #     """ Compute dimacs version of the network file edges.gz.
+
+    #     Edges are then ordered.
+        
+    #     Input file
+    #     ----------
+    #     edges_f: gzipped file
+    #         Gzipped file containing the list of edges of the co-expression networks.
+    #         Each line is an undirected edge, formatted as:
+    #             <index of gene 1> <index of gene 2>
+    #         By convention, the index of gene 1 is smaller than that of gene 2.
+
+    #     Modified file
+    #     -------------
+    #     self.ntwk_dimacs_f: path
+    #         Dimacs version of edges.gz
+
+    #     """
+    #     edges_set = set([])
+    #     with gzip.open(edges_f, 'r') as f:     
+    #         for line in f:
+    #             idx_1, idx_2 = [int(x) for x in line.split()]
+    #             edges_set.add((idx_1, idx_2))
+    #             edges_set.add((idx_2, idx_1))
+    #         f.close()
+
+    #     edges_list = list(edges_set)
+    #     edges_list.sort()
+                
+    #     with open(self.ntwk_dimacs_f, 'w') as g:
+    #         g.write("p max %d %d\n" % (self.num_features, self.num_edges*2))
+    #         for e in edges_list:
+    #             g.write("a %d %d 1\n" % ((e[0]+1), (e[1]+1)))
+    #         g.close()           
 
 
     def compute_node_weights(self):
@@ -391,6 +499,10 @@ class InnerCrossVal(object):
             Optimal values of the regularization parameters:
             lambda_sfan, eta_sfan, C_ridge.
         """
+        # print "reg_params[0]"
+        # for (l, e) in reg_params[0]:
+        #     print l, e
+        # sys.exit(0)
         msfanpy = '%s/multitask_sfan.py' % self.sfan_path
         sys.path.append(self.sfan_path)
         import evaluation_framework as ef
@@ -420,17 +532,19 @@ class InnerCrossVal(object):
                          '--networks', self.ntwk_dimacs_f, 
                          '--node_weights', tmp_node_weights_f,
                          '-l', ('%f' % lbd), '-e', ('%f' % eta), '-m', '0']
-                print "Running: ", " ".join(argum)
+                #print "\tRunning: ", " ".join(argum)
                 p = subprocess.Popen(argum, stdout=subprocess.PIPE)
                 pc = p.communicate()
-                p_out = pc[0].split("\n")[-2]
+                p_out = pc[0].split("\n")[2]
                 sel_list.append([int(x) for x in p_out.split()])
-            ci = ef.consistency_index_k(sel_list, len(self.connected_nodes_map))
-            print lbd, eta, ci 
+            ci = ef.consistency_index_k(sel_list, num_nodes)
+            print "\tlbd:\t%.2e\teta:\t%.2e\tcix:%.2f" % (lbd, eta, ci)
             if ci >= best_ci:
                 best_reg_param = [lbd, eta]
-                ci = best_ci
-
+                best_ci = ci
+        print "\nbest lambda\t", best_reg_param[0], "\tbest eta\t", best_reg_param[1]
+        print "\tbest cix\t", best_ci
+        
         # Delete temporary node_weights files
         for tmp_node_weights_f in tmp_node_weights_f_list:
             os.remove(tmp_node_weights_f)
@@ -441,13 +555,15 @@ class InnerCrossVal(object):
                  '--node_weights', self.node_weights_f,
                  '-l',  ('%f' % best_reg_param[0]),
                  '-e',  ('%f' % best_reg_param[1]), '-m', '0']
-        print "Running: ", " ".join(argum)
+        #print "Running: ", " ".join(argum)
         p = subprocess.Popen(argum, stdout=subprocess.PIPE)
-        p_out = p.communicate()[0].split("\n")[-2]
+        p_out = p.communicate()[0].split("\n")[2]
         # selected_features = [self.connected_nodes_map[int(x)] for x in p_out.split()]
         selected_features = [(int(x)-1) for x in p_out.split()]
         print self.num_features, "features/nodes in network"
-        print np.max(selected_features), ": highest selected features"
+        print len(selected_features), "features/nodes selected"
+        print selected_features
+        # print np.max(selected_features), ": highest selected features"
 
         # Initialize logistic regression cross-validation classifier
         cv_clf = sklm.LogisticRegressionCV(Cs=reg_params[1], penalty='l2', solver='liblinear',
@@ -499,9 +615,9 @@ class InnerCrossVal(object):
                  '--node_weights', self.node_weights_f,
                  '-l',  ('%f' % best_reg_param[0]),
                  '-e',  ('%f' % best_reg_param[1]), '-m', '0']
-        print "Running: ", " ".join(argum)
+        # print "Running: ", " ".join(argum)
         p = subprocess.Popen(argum, stdout=subprocess.PIPE)
-        p_out = p.communicate()[0].split("\n")[-2]
+        p_out = p.communicate()[0].split("\n")[2]
         # features = [self.connected_nodes_map[int(x)] for x in p_out.split()]
         features = [(int(x)-1) for x in p_out.split()]
         
@@ -1294,15 +1410,22 @@ def main():
     # ========= sfan =========
     if use_sfan:
         ridge_C = [10.**k for k in range(-4, 1)]
-        icv.run_inner_l2_logreg_write(args.results_dir, reg_params=ridge_C)
+        # To have l2 log reg on selected features:
+        # icv.run_inner_l2_logreg_write(args.results_dir, reg_params=ridge_C)
         
         # Use sfan to select features
-        sfan_eta_values = [10**(k) for k in range(-5, -2)]
-        sfan_lbd_values = [10**(k) for k in range(-5, -2)]
-        
+        sfan_eta_values = [0.008, 0.01, 0.02, 0.05, 0.1]#[5**(k) for k in range(-5, -2)]
+        sfan_lbd_values = [0.008, 0.01, 0.02, 0.05, 0.1] #[5**(k) for k in range(-5, -2)]
+        sfan_reg_params = [itertools.product(sfan_lbd_values,
+                                             sfan_eta_values), ridge_C]
+        # sfan_reg_params = [[[l, e] for l, e in itertools.product(sfan_lbd_values,
+        #                                                         sfan_eta_values)]]
+        sfan_reg_params.append(ridge_C)
+        # print "sfan_reg_params", sfan_reg_params
+        # for (l, e) in sfan_reg_params[0]:
+        #     print l, e
         icv.run_inner_sfan_write(args.results_dir,
-                                 reg_params=[itertools.product(sfan_lbd_values,
-                                                               sfan_eta_values), ridge_C])
+                                 reg_params=sfan_reg_params)
     # ========= End sfan =========
         
     else:

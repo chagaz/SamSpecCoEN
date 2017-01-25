@@ -138,12 +138,16 @@ class CoExpressionNetwork(object):
             Each line is an undirected edge, formatted as:
                 <index of gene 1> <index of gene 2>
             By convention, the index of gene 1 is smaller than that of gene 2.
-
         out_path/edges_entrez.gz: 
             Gzipped file containing the list of edges of the PPI network.
             Each line is an undirected edge, formatted as:
                 <EntrezID of gene 1> <EntrezID of gene 2>
             in the same order as edges.gz.
+        out_path/genes_in_network.txt:
+            List of indices (in expression data) of the genes in the PPI network.
+        out_path/genes_in_network_entrez.txt:
+            List of Entrez IDs of the genes in the PPI network,
+            in the same order as the nodes of the PPI.
         """
         
         # Load set of edges
@@ -193,6 +197,23 @@ class CoExpressionNetwork(object):
         self.edges = np.array([[genes_in_network.index(e[0]),
                                genes_in_network.index(e[1])] for e in edges_list])
         
+        # Save mapping between indices in self.expression_data (before restriction)
+        # and indices used in self.edges
+        genes_indices_f = '%s/genes_in_network.txt' % out_path
+        np.savetxt(genes_indices_f, genes_in_network, fmt='%d')
+        sys.stdout.write("Indices of genes in network saved to %s\n" % \
+                         genes_indices_f)
+
+        # Save EntrezIDs of genes in network
+        genes_entrez_f = '%s/genes_in_network_entrez.txt' % out_path
+        #print self.gene_names[genes_in_network[0]]
+        np.savetxt(genes_entrez_f,
+                   [self.gene_names[x] for x in genes_in_network], fmt='%s')
+        sys.stdout.write("Entrez IDs of genes in network saved to %s\n" % \
+                         genes_entrez_f)
+        sys.exit(0)
+
+
         # Create self.ntwk_skeleton (upper triangular) from edges_list
         self.ntwk_skeleton = np.zeros((self.num_genes, self.num_genes))
         for e in self.edges:
@@ -493,6 +514,16 @@ def run_whole_data(expression_data, sample_labels, gene_names,
         Each line is an undirected edge, formatted as:
             <index of gene 1> <index of gene 2>
         By convention, the index of gene 1 is smaller than that of gene 2.
+    out_path/edges_entrez.gz: 
+        Gzipped file containing the list of edges of the PPI network.
+        Each line is an undirected edge, formatted as:
+            <EntrezID of gene 1> <EntrezID of gene 2>
+        in the same order as edges.gz.
+    out_path/genes_in_network.txt:
+        List of indices (in expression data) of the genes in the PPI network.
+    out_path/genes_in_network_entrez.txt:
+        List of Entrez IDs of the genes in the PPI network,
+        in the same order as the nodes of the PPI.
     out_dir/regline/edge_weights.gz:
         gzipped file containing the (self.num_edges, self.num_samples) array
         describing the edge weights of the Regline co-expression networks

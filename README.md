@@ -158,7 +158,7 @@ converts a list of Entrez IDs in gene symbols.
 compares (hypergeometric test) the list of selected genes to all the reference gene sets under `../FERAL_supp_data/Allahyar.285.sup.1`.
 
 ### GO enrichment analysis
-Can be done using the web server at http://pantherdb.org/
+Can be done using the web server at http://pantherdb.org/ (overrepresentation test)
 To easily copy-paste the list of selected genes: xsel -b < final_selection_genes_symbols.txt
 
 
