@@ -9,7 +9,7 @@ All samples have the same network *structure*, but edge *weights* depend on the 
 
 To do this, we combine an existing network structure, given by a PPI network, with gene expression data.
 
-Edge weights reflect the sample's contribution to the population-wide correlation, its deviation from the control correlation, or whether this edge can be considered active or not.
+Edge weights reflect the sample's deviation from the control correlation, or the "activity" of the corresponding edge.
 
 Related work:  
 LIONESS [Kuijjer et al., 2015]: For a given sample, an edge-weight is the contribution of this sample to the global correlation.  
@@ -33,7 +33,7 @@ Propositions:
 
 
 Evaluation:
-While one of the goals here is to use network-specific algorithms, at first we want to see whether we can build edge weights that are at least as expressive as node weights (that is to say, gene expression levels). We quantify this by cross-validated performance of a L1-regularized logistic regression trained on these weights.
+While one of the goals here is to use network-specific algorithms, at first we want to see whether we can build edge weights that are at least as expressive as node weights (that is to say, gene expression levels). We quantify this by cross-validated performance of both an L1-regularized and an L1/L2-regularized logistic regressions, trained on these weights.
 
 Requirements
 ============
@@ -44,7 +44,7 @@ Python packages
 * numpy  
 * memory_profiler (optional, for profiling memory usage)
 * timeit (optional, for timing functions)
-* spams (for elastic-net), see http://spams-devel.gforge.inria.fr/ 
+* python-glmnet for elastic net, see https://github.com/civisanalytics/python-glmnet
 
 ACES
 ----
@@ -84,7 +84,7 @@ This experiment is meant to be comparable to that of the FERAL paper: we build 1
 creates train and test indices for `repeat0` of the cross-validation procedure, stored as `train.indices` and `test.indices` under `../outputs/U133A_combat_RFS/subtype_stratified/repeat0/<fold idx>/` for `<fold idx>` ranging from 0 to 9.
 
 #### Inner cross-validation
-`python InnerCrossVal.py ../ACES ../outputs/U133A_combat_RFS ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0/ regline -k 5 -m 1000` 
+`python InnerCrossVal.py ../ACES ../outputs/U133A_combat_RFS ../outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0/ -t regline -k 5 -m 1000` 
 runs an inner cross-validation loop (5 folds) on the training part of fold 0 of repeat 0, using the REGLINE edge weights as features, to determine optimal parameter(s) of the learning algorithm.
 Results are stored under `../outputs/U133A_combat_RFS/subtype_stratified/repeat0/fold0/results/`
 
@@ -93,14 +93,16 @@ To run on all 10 folds:
 
 #### Outer cross-validation
 Once the optimal parameters have been determined by inner cross-validation,
-`python OuterCrossVal.py ../ACES ../outputs/U133A_combat_RFS/ ../outputs/U133A_combat_RFS/subtype_stratified/repeat0 regline -o 10 -k 5 -m 1000`
+`python OuterCrossVal.py ../ACES ../outputs/U133A_combat_RFS/ ../outputs/U133A_combat_RFS/subtype_stratified/repeat0 -t regline -o 10 -k 5 -m 1000`
 runs the outer loop of 10-fold cross-validation on repeat0, using the REGLINE edge weights as features, and selecting at most 1000 features.
 
 The `--nodes` option allows you to run the exact same algorithm on the exact same folds, but using the node weights (i.e. gene expression data) directly instead of the edge weights, for comparison purposes (the network type is required but won't be used).
 
-The `--sfan` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan). This will also run an l2-regularized logistic regression only on the nodes that are connected in the network (i.e. not using sfan at all).
+The `--cnodes` option allows you to run the exact same algorithm on the exact same folds, but using the node weights (i.e. gene expression data) directly instead of the edge weights, for comparison purposes (the network type is required but won't be used), and restricting the nodes used to the genes that are connected in the network.
 
-The `--enet` option allows you to run an elastic net (l1/l2 regularization). Currently, it uses scikit-learn's implementation, which has some issues. This should be re-implemented using [spams](http://spams-devel.gforge.inria.fr/) or [L1L2py](https://pypi.python.org/pypi/L1L2Py/1.0.5). 
+The `--sfan` option allows you to run sfan [Azencott et al., 2013] to select nodes, using the structure of the co-expression network, using an l2-regularized logistic regression on the values (normalize gene expression) of the selected nodes for final prediction. In this case ```${sfan_dir}``` points to the ```sfan/code``` folder that you can obtain from [sfan's github repository](https://github.com/chagaz/sfan). 
+
+The `--enet` option allows you to run an elastic net (l1/l2 regularization), using the python-glmnet package from [Civis Analytics](https://github.com/civisanalytics/python-glmnet).
 
 #### Structure of the outputs/results directory
 under `../outputs/U133A_combat_RFS/subtype_stratified/repeat<repeat_index>`:
@@ -109,27 +111,29 @@ under `../outputs/U133A_combat_RFS/subtype_stratified/repeat<repeat_index>`:
   - test.indices, test.labels, train.indices, train.labels
   - results/:
     - <network type>/: ('regline', 'euclide', etc.)
-      - featuresList, predValues, yte: results of inner cross-validation (l1-regularized logistic regression on edge weights).
-      - enet/:
-          featuresList, predValues, yte: results of inner cross-validation (l1/l2-regularized logistic regression on edge weights).
+      featuresList, predValues, yte: results of inner cross-validation (l1-regularized logistic regression on edge weights).
      - nodes/:
-        - featuresList, predValues, yte: results of inner cross-validation (l1-regularized logistic regression on node weights).
-        - enet/:
-           featuresList, predValues, yte: results of inner cross-validation (l1/l2-regularized logistic regression on node weights).
-        - sfan/:
-            featuresList, predValues, yte: results of inner cross-validation (sfan on node weights).
-            
+        featuresList, predValues, yte: results of inner cross-validation (l1-regularized logistic regression on node weights).
+     - nodes/:
+        featuresList, predValues, yte: results of inner cross-validation (l1-regularized logistic regression on *connected* node weights).
+    - sfan/:
+		featuresList, predValues, yte: results of inner cross-validation (sfan on node weights).
+    Each of <network type>/, nodes/ and cnodes/ contains
+		  - enet/:
+			same files, l1/l2-regularized version.
+
 - results/:
     - <network type>/: ('regline', 'euclide', etc.)
-      - cix.pdf, fov.pdf, results.txt: results of outer cross-validation (l1-regularized logistic regression on edge weights).
-      - enet/:
-          cix.pdf, fov.pdf, results.txt: results of outer cross-validation (l1/l2-regularized logistic regression on edge weights).
-     - nodes/:
-        - cix.pdf, fov.pdf, results.txt: results of outer cross-validation (l1-regularized logistic regression on node weights).
-        - enet/:
-           cix.pdf, fov.pdf, results.txt: results of outer cross-validation (l1/l2-regularized logistic regression on node weights).
-        - sfan/:
-            cix.pdf, fov.pdf, results.txt: results of outer cross-validation (sfan on node weights).
+      cix.pdf, fov.pdf, results.txt: results of outer cross-validation (l1-regularized logistic regression on edge weights).
+    - nodes/:
+      cix.pdf, fov.pdf, results.txt: results of outer cross-validation (l1-regularized logistic regression on node weights).
+    - cnodes/:
+      cix.pdf, fov.pdf, results.txt: results of outer cross-validation (l1-regularized logistic regression on *connected* node weights).
+     - sfan/:
+       cix.pdf, fov.pdf, results.txt: results of outer cross-validation (sfan on node weights).
+    Each of <network type>/, nodes/ and cnodes/ contains
+		  - enet/:
+			same files, l1/l2-regularized version.
 ```
 
 Analysis of results
@@ -139,7 +143,7 @@ To generate the set of features selected in k of the 10 cross-validation folds, 
 
 ` python analyze_final.py ../ACES ../outputs/U133A_combat_RFS \
          ../outputs/U133A_combat_RFS/subtype_stratified/repeat0  \
-         regline -o 10 -k 5 -m 1000`
+         -t regline -o 10 -k 5 -m 1000 -u 10`
 creates, under `../outputs/U133A_combat_RFS/subtype_stratified/repeat0/results/regline/`, the following files:
 * `final_selection_genes.txt`: List of EntrezIDs of selected genes + number of edges they belong to
 * `final_selection_results.txt`: Cross-validated predictivity (ridge regression) of selected features.
@@ -161,13 +165,33 @@ compares (hypergeometric test) the list of selected genes to all the reference g
 Can be done using the web server at http://pantherdb.org/ (overrepresentation test)
 To easily copy-paste the list of selected genes: xsel -b < final_selection_genes_symbols.txt
 
+Analysis of multiple repeats
+-----------------------------
+### Plot performance metrics (mean + std)
+`python create_plots.py \
+	../outputs/U133A_combat_RFS/KEGG_edges1210/subtype_stratified -r 5` plots
+	number of selected features, consistency index, Fisher's overlap, and AUROC
+	averaged over 5 repeated cross-validated experiments.
+
+Creates, under `../outputs/U133A_combat_RFS/KEGG_edges1210/subtype_stratified/results`,
+the following plots:
+* `subtype_stratified_auc.pdf` (AUROC)
+* `subtype_stratified_numf.pdf` (number of features)
+* `subtype_stratified_cix.pdf` (consistency index)
+* `subtype_stratified_fov.pdf` (Fisher's overlap).
+
+
+### Analyze the features that were selected across a fraction of folds (repeated)
+`python multiple_repeats_analysis.py ../ACES ../outputs/U133A_combat_RFS/KEGG_edges1210 \
+         ../outputs/U133A_combat_RFS/subtype_stratified/KEGG_edges1210  \
+         -t regline -o 10 -r 5 -u 50` creates, under `../outputs/U133A_combat_RFS/subtype_stratified/results/regline/`, the following files:
+* `final_selection_genes.txt`: List of EntrezIDs of selected genes + number of edges they belong to
+* `final_selection_results.txt`: Cross-validated predictivity (ridge regression) of selected features.
+ 
 
 Task list
 =========
-- [x] Validate the different weights of computing edge weights (i.e. ensure they do what they're supposed to) in CoExpressionNetwork.py
-- [ ] Compare the performance of the l1-regularized subtype-stratified cross-validation using the various edge weights as features to that of using directly the gene expression levels as features.
 - [ ] Propose new ways of computing edge weights.
-- [x] Implement the `--enet` option with [spams](http://spams-devel.gforge.inria.fr/) or [L1L2py](https://pypi.python.org/pypi/L1L2Py/1.0.5). 
 
 
 

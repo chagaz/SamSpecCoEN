@@ -9,7 +9,7 @@ import numpy as np
 import os
 import sys
 
-from sklearn import cross_validation as skcv 
+from sklearn import model_selection 
 
 
 def main():
@@ -73,8 +73,11 @@ def main():
     f.close()
     
     # Create the data split:
-    skf = skcv.StratifiedKFold(sample_labels, n_folds=args.num_folds,
-                               shuffle=True, random_state=args.repeat)
+    model_selector = model_selection.StratifiedKFold(n_splits=args.num_folds,
+                                                     shuffle=True, random_state=args.repeat)
+    skf = model_selector.split(np.zeros(self.sample_labels.shape[0]),
+                               self.sample_labels)
+
 
     for fold_nr, (tr_indices, te_indices) in enumerate(skf):
         # Create output directory

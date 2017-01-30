@@ -17,7 +17,10 @@ orange_color = '#d66000'
 blue_color = '#005599'
 
 reg_list = ['lasso', 'enet'] 
-xp_list = ['nodes', 'regline', 'euclthr', 'sum']
+xp_list = ['nodes', 'cnodes', 'sfan', 'regline', 'euclthr', 'sum']
+reg_xp = [(reg, xp) \
+          for (reg, xp) in itertools.product(reg_list, xp_list) \
+          if (reg, xp) != ('enet', 'sfan')]
 
 
 def plot_numf(results_dir, figure_path, num_repeats=10):
@@ -57,6 +60,9 @@ def plot_numf(results_dir, figure_path, num_repeats=10):
             numf_dict['lasso'][xp].extend(numf_list)
 
             # Enet experiments
+            if xp == 'sfan':
+                # no enet experiment
+                continue
             results_f = '%s/repeat%d/results/%s/enet/results.txt' % (results_dir,
                                                                      repeat_idx, xp)
             with open(results_f, 'r') as f:
@@ -68,8 +74,7 @@ def plot_numf(results_dir, figure_path, num_repeats=10):
                 f.close()
             numf_dict['enet'][xp].extend(numf_list)
 
-            
-    numf_data = np.array([numf_dict[reg][xp] for (reg, xp) in itertools.product(reg_list, xp_list)])
+    numf_data = np.array([numf_dict[reg][xp] for (reg, xp) in reg_xp])
     numf_data = np.transpose(numf_data)
     num_xp = numf_data.shape[1]
     
@@ -84,8 +89,7 @@ def plot_numf(results_dir, figure_path, num_repeats=10):
 
     plt.title('Cross-validated logistic regression over %d repeats' % num_repeats)
     plt.ylabel('Number of features')
-    # labels = ('Nodes (l1)', 'Cnodes (l2)', 'Sfan', 'Edges (Lioness)', 'Edges (Regline)')
-    labels = ('%s (%s)' % (reg, xp) for (reg, xp) in itertools.product(reg_list, xp_list))
+    labels = ('%s (%s)' % (reg, xp) for (reg, xp) in reg_xp)
     plt.xticks(range(1, (num_xp + 1)), labels, rotation=35)    
 
     means = np.mean(numf_data, axis=0)
@@ -137,6 +141,9 @@ def plot_cixs(results_dir, figure_path, num_repeats=10):
             cix_dict['lasso'][xp].extend(cix_list)
 
             # Enet experiments
+            if xp == 'sfan':
+                # no enet experiment
+                continue
             results_f = '%s/repeat%d/results/%s/enet/results.txt' % (results_dir,
                                                                      repeat_idx, xp)
             with open(results_f, 'r') as f:
@@ -149,7 +156,7 @@ def plot_cixs(results_dir, figure_path, num_repeats=10):
                 f.close()
             cix_dict['enet'][xp].extend(cix_list)
             
-    cix_data = np.array([cix_dict[reg][xp] for (reg, xp) in itertools.product(reg_list, xp_list)])
+    cix_data = np.array([cix_dict[reg][xp] for (reg, xp) in reg_xp])
     cix_data = np.transpose(cix_data)
     num_xp = cix_data.shape[1]
 
@@ -164,7 +171,7 @@ def plot_cixs(results_dir, figure_path, num_repeats=10):
 
     plt.title('Cross-validated logistic regression over %d repeats' % num_repeats)
     plt.ylabel('Consistency Index')
-    labels = ('%s (%s)' % (reg, xp) for (reg, xp) in itertools.product(reg_list, xp_list))
+    labels = ('%s (%s)' % (reg, xp) for (reg, xp) in )
     plt.xticks(range(1, (num_xp + 1)), labels, rotation=35)    
     plt.ylim(-0.1, 1.1)
             
@@ -209,6 +216,9 @@ def plot_fovs(results_dir, figure_path, num_repeats=10):
             fov_dict['lasso'][xp].extend(fov_list)
 
             # Enet experiments
+            if xp == 'sfan':
+                # no enet experiment
+                continue
             results_f = '%s/repeat%d/results/%s/enet/results.txt' % (results_dir,
                                                                      repeat_idx, xp)
             with open(results_f, 'r') as f:
@@ -221,7 +231,7 @@ def plot_fovs(results_dir, figure_path, num_repeats=10):
                 f.close()
             fov_dict['enet'][xp].extend(fov_list)
             
-    fov_data = np.array([fov_dict[reg][xp] for (reg, xp) in itertools.product(reg_list, xp_list)])
+    fov_data = np.array([fov_dict[reg][xp] for (reg, xp) in reg_xp])
     fov_data = np.transpose(fov_data)
     num_xp = fov_data.shape[1]
 
@@ -239,7 +249,7 @@ def plot_fovs(results_dir, figure_path, num_repeats=10):
 
     plt.title('Cross-validated logistic regression over %d repeats' % num_repeats)
     plt.ylabel('Fisher Overlap')
-    labels = ('%s (%s)' % (reg, xp) for (reg, xp) in itertools.product(reg_list, xp_list))
+    labels = ('%s (%s)' % (reg, xp) for (reg, xp) in reg_xp)
     plt.xticks(range(1, (num_xp + 1)), labels, rotation=35)    
 
     plt.savefig(figure_path, bbox_inches='tight')
@@ -283,6 +293,9 @@ def plot_aucs(results_dir, figure_path, num_repeats=10):
             auc_dict['lasso'][xp].append(auc)
 
             # Enet experiments
+            if xp == 'sfan':
+                # no enet experiment
+                continue
             results_f = '%s/repeat%d/results/%s/enet/results.txt' % (results_dir,
                                                                      repeat_idx, xp)
             with open(results_f, 'r') as f:
@@ -294,7 +307,7 @@ def plot_aucs(results_dir, figure_path, num_repeats=10):
                 f.close()
             auc_dict['enet'][xp].append(auc)
             
-    auc_data = np.array([auc_dict[reg][xp] for (reg, xp) in itertools.product(reg_list, xp_list)])
+    auc_data = np.array([auc_dict[reg][xp] for (reg, xp) in reg_xp])
     auc_data = np.transpose(auc_data)
     num_xp = auc_data.shape[1]
 
@@ -313,7 +326,7 @@ def plot_aucs(results_dir, figure_path, num_repeats=10):
 
     plt.title('Cross-validated logistic regression over %d repeats' % num_repeats)
     plt.ylabel('AUC')
-    labels = ('%s (%s)' % (reg, xp) for (reg, xp) in itertools.product(reg_list, xp_list))
+    labels = ('%s (%s)' % (reg, xp) for (reg, xp) in reg_xp)
     plt.xticks(range(1, (num_xp + 1)), labels, rotation=35)    
     # plt.ylim(0.63, 0.78)
 
