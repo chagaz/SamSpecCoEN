@@ -377,7 +377,7 @@ class OuterCrossVal(object):
             icv = InnerCrossVal.InnerCrossVal(self.aces_data_path, data_fold_root,
                                               self.network_type, self.nr_inner_folds,
                                               self.max_nr_feats,
-                                              use_nodes=False, use_cnodes=False
+                                              use_nodes=False, use_cnodes=False,
                                               use_sfan=True, sfan_path=self.sfan_path)
                                               
 
@@ -877,7 +877,7 @@ def main():
     args = parser.parse_args()
 
     #========= Sanity checks =========
-    if args.network_type 
+    if args.network_type: 
         try:
             assert args.network_type in network_types
         except AssertionError:
@@ -943,7 +943,7 @@ def main():
                         args.network_type, num_samples,
                         args.num_inner_folds, args.num_outer_folds, 
                         max_nr_feats=args.max_nr_feats,
-                        use_nodes=args.use_nodes, use_cnodes=args.use_cnodes,
+                        use_nodes=args.nodes, use_cnodes=args.cnodes,
                         use_sfan=use_sfan, sfan_path=args.sfan,
                         use_enet=args.enet)
     ocv.read_inner_results()
