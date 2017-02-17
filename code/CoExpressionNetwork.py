@@ -12,8 +12,10 @@ import os
 import sys
 import timeit
 
-sys.path.append('../ACES/')
-sys.path.append('/share/data40T/chloe/SamSpecCoEN/ACES/')
+ACES_PATH = '../ACES/'
+#ACES_PATH = '/share/data40T/chloe/SamSpecCoEN/ACES/'
+sys.path.append(ACES_PATH)
+
 from datatypes.ExpressionDataset import HDF5GroupToExpressionDataset, MakeRandomFoldMap
 
 import utils
@@ -698,7 +700,7 @@ def main():
 
     # Get expression data, sample labels.
     # Do not normalize the data while loading it (so as not to use test data for normalization).
-    f = h5py.File("../ACES/experiments/data/U133A_combat.h5", "r")
+    f = h5py.File("%s/experiments/data/U133A_combat.h5" % ACES_PATH, "r")
     aces_data = HDF5GroupToExpressionDataset(f['U133A_combat_%s' % args.dataset_name],
                                             checkNormalise=False)
     f.close()

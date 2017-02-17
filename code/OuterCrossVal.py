@@ -147,8 +147,6 @@ class OuterCrossVal(object):
         self.use_cnodes = use_cnodes
         self.use_enet = use_enet
         self.use_sfan = use_sfan
-        if self.use_sfan:
-            self.use_nodes = True
 
         # Read the number of features
         if self.use_nodes:
@@ -313,7 +311,7 @@ class OuterCrossVal(object):
             List of list of indices of the selected features.
         """
         for fold_idx in range(self.nr_outer_folds):
-            sys.stdout.write("Reading results for fold %d\n" % fold_idx)
+            #sys.stdout.write("Reading results for fold %d\n" % fold_idx)
 
             # Read the test indices
             te_indices = np.loadtxt('%s/fold%d/test.indices' % (self.innercv_root, fold_idx),
@@ -711,7 +709,7 @@ class OuterCrossVal(object):
             aces_gene_names = aces_data.geneLabels
             if self.use_cnodes or self.use_sfan:
                 # Restrict to connected nodes only
-                aces_gene_names = [aces_genes_names[ix] for ix in self.genes_in_network]
+                aces_gene_names = [aces_gene_names[ix] for ix in self.genes_in_network]
             selected_genes_dict = {aces_gene_names[ix]:0 for ix in selected_features_list}
         else:
             ## Features are edges
@@ -760,7 +758,7 @@ class OuterCrossVal(object):
             x_data = aces_data.expressionData[:, selected_features_list]
         elif self.use_cnodes or self.use_sfan:
             print "Using connected node weights as features"
-            x_data = aces_data.expressionData[:, genes_in_network]
+            x_data = aces_data.expressionData[:, self.genes_in_network]
             x_data = x_data[:, selected_features_list]
         else:
             print "Using edge weights as features"

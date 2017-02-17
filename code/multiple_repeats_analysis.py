@@ -82,9 +82,12 @@ def get_selected_genes(min_number_folds, aces_data, features_list,
     if use_nodes:
         ## Features are genes
         aces_gene_names = aces_data.geneLabels
-        if use_cnodes:
-            # Restrict to connected nodes only
-            aces_gene_names = [aces_genes_names[ix] for ix in self.genes_in_network]
+        selected_genes_dict = {aces_gene_names[ix]:0 for ix in selected_features_list}
+    if use_cnodes:
+        # Restrict to connected nodes only
+        aces_gene_names = aces_data.geneLabels
+        genes_in_network = np.loadtxt('%s/genes_in_network.txt' % network_root, dtype=int)
+        aces_gene_names = [aces_gene_names[ix] for ix in genes_in_network]
         selected_genes_dict = {aces_gene_names[ix]:0 for ix in selected_features_list}
     else:
         ## Features are edges
@@ -147,6 +150,7 @@ def final_cv_score(selected_features_list, aces_data, use_nodes,
         x_data = aces_data.expressionData[:, selected_features_list]
     elif use_cnodes:
         print "Using connected node weights as features"
+        genes_in_network = np.loadtxt('%s/genes_in_network.txt' % network_root, dtype=int)
         x_data = aces_data.expressionData[:, genes_in_network]
         x_data = x_data[:, selected_features_list]
     else:
@@ -177,7 +181,7 @@ def final_cv_score(selected_features_list, aces_data, use_nodes,
     
 
 def final_analysis(features_list, results_dir, threshold, aces_data_path, use_nodes,
-                   network_root, network_type):
+                   use_cnodes, network_root, network_type):
     """ Create results files.
 
     Parameter
@@ -192,6 +196,8 @@ def final_analysis(features_list, results_dir, threshold, aces_data_path, use_no
         Path to folder containing ACES data.
     use_nodes: bool
         Whether to use node weights rather than edge weights as features.
+    use_cnodes: bool
+        Whether to use weights of connected nodes rather than edge weights as features.
     network_root: path
         Path to folder containing network skeleton and edges.
     network_type: string
@@ -215,6 +221,7 @@ def final_analysis(features_list, results_dir, threshold, aces_data_path, use_no
     # Get final selection
     selected_features_list, selected_genes_dict = get_selected_genes(threshold, aces_data,
                                                                      features_list, use_nodes,
+                                                                     use_cnodes,
                                                                      network_root) 
     sel_fname = '%s/final_selection_genes.txt' % results_dir
     with open(sel_fname, 'w') as f:
@@ -224,8 +231,9 @@ def final_analysis(features_list, results_dir, threshold, aces_data_path, use_no
 
     # Cross-validated predictivity of selected features
     cv_scores = final_cv_score(selected_features_list, aces_data, use_nodes,
-                               network_root, network_type)
+                               use_cnodes, network_root, network_type)
     res_fname = '%s/final_selection_results.txt' % results_dir
+    print ">> Writing results to %s <<" % res_fname
     with open(res_fname, 'w') as f:
         # Write
         f.write("Number of features used:\t%d\n" % len(selected_features_list))
@@ -270,6 +278,8 @@ def main():
                         type=int)
     parser.add_argument("-n", "--nodes", action='store_true', default=False,
                         help="Work with node weights rather than edge weights")
+    parser.add_argument("-c", "--cnodes", action='store_true', default=False,
+                        help="Work with *connected* node weights rather than edge weights")
     parser.add_argument("-s", "--sfan",
                         help='Path to sfan code (then automatically use sfan + l2 logistic regression)')
     parser.add_argument("-e", "--enet", action='store_true', default=False,
@@ -345,19 +355,20 @@ def main():
     # Read features selected in inner cross-validation experiments
     features_list = []
     for repeat_idx in range(args.num_repeats):
-        innercv_path = '%s/repeat$d' % (args.repeat_path, repeat_idx)
+        innercv_path = '%s/repeat%d' % (args.repeat_path, repeat_idx)
         ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.network_path,
                                           innercv_path,
                                           args.network_type, num_samples,
                                           0, args.num_outer_folds, 
                                           use_nodes=args.nodes, use_cnodes=args.cnodes,
-                                          use_sfan=use_sfan, sfan_path=args.sfan)
+                                          use_sfan=use_sfan, sfan_path=args.sfan,
+                                          use_enet=args.enet)
         ocv.read_inner_results()
         features_list.extend(ocv.features_list)
 
     # Analyze and write results
     final_analysis(features_list, results_dir, args.threshold, args.aces_data_path,
-                   args.nodes, use_cnodes, args.network_path, args.network_type)
+                   args.nodes, args.cnodes, args.network_path, args.network_type)
 
             
 if __name__ == "__main__":

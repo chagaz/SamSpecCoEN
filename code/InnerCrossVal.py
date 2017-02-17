@@ -310,9 +310,9 @@ class InnerCrossVal(object):
         # Read list of indices of genes in network
         genes_in_network = np.loadtxt(nodes_f, dtype=int)
 
-        # Restrict data to nodes that belong to the network:
-        self.x_tr = self.x_tr[:, genes_in_network]
-        self.x_te = self.x_te[:, genes_in_network]
+        # # Restrict data to nodes that belong to the network:
+        # self.x_tr = self.x_tr[:, genes_in_network]
+        # self.x_te = self.x_te[:, genes_in_network]
 
         self.num_features = len(genes_in_network)
         print "%d nodes in the network." % self.num_features
@@ -1436,7 +1436,7 @@ def main():
         ridge_C = [10.**k for k in range(-4, 1)]
         
         # Use sfan to select features
-        sfan_eta_values = [0.008, 0.01, 0.02, 0.05, 0.1]
+        sfan_eta_values = [0.0005, 0.001, 0.005, 0.008, 0.01] #[0.008, 0.01, 0.02, 0.05, 0.1]
         sfan_lbd_values = [0.008, 0.01, 0.02, 0.05, 0.1]
         sfan_reg_params = [itertools.product(sfan_lbd_values,
                                              sfan_eta_values), ridge_C]

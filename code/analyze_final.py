@@ -111,13 +111,13 @@ def main():
         use_sfan=True
     else:
         use_sfan=False
-    ocv = OuterCrossVal(args.aces_data_path, args.network_path, args.innercv_path, 
-                        args.network_type, num_samples,
-                        args.num_inner_folds, args.num_outer_folds, 
-                        max_nr_feats=args.max_nr_feats,
-                        use_nodes=args.use_nodes, use_cnodes=args.use_cnodes,
-                        use_sfan=use_sfan, sfan_path=args.sfan,
-                        use_enet=args.enet)
+    ocv = OuterCrossVal.OuterCrossVal(args.aces_data_path, args.network_path, args.innercv_path, 
+                                      args.network_type, num_samples,
+                                      args.num_inner_folds, args.num_outer_folds, 
+                                      max_nr_feats=args.max_nr_feats,
+                                      use_nodes=args.nodes, use_cnodes=args.cnodes,
+                                      use_sfan=use_sfan, sfan_path=args.sfan,
+                                      use_enet=args.enet)
     ocv.read_inner_results()
 
     # Run final analysis
